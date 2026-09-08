@@ -8,6 +8,7 @@ import '../core/contracts.dart';
 import '../core/identity.dart';
 import '../models/mutation.dart';
 import '../storage/brain2_database.dart';
+import 'g11_sync_proof.dart';
 import 'network_client.dart';
 import 'sync_contract.dart';
 
@@ -861,9 +862,13 @@ class Brain2P2PSync {
           if (mutation.originDeviceId != peer) {
             throw StateError('mutation origin device mismatch');
           }
-          if (lastApplied > 0 && mutation.originSequence > lastApplied + 1) {
+          final gapExpected = brain2MutationGapExpected(
+            lastApplied,
+            mutation.originSequence,
+          );
+          if (gapExpected != null) {
             throw StateError(
-              'mutation gap: expected ${lastApplied + 1}, '
+              'mutation gap: expected $gapExpected, '
               'got ${mutation.originSequence}',
             );
           }

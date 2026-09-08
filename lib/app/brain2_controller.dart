@@ -14,6 +14,7 @@ import '../services/b2m_mobile_service.dart';
 import '../services/import_service.dart';
 import '../storage/brain2_database.dart';
 import '../storage/mutation_service.dart';
+import '../sync/g11_sync_proof.dart';
 import '../sync/p2p_sync.dart';
 import '../sync/qr_pairing.dart';
 
@@ -185,6 +186,33 @@ class Brain2Controller extends ChangeNotifier {
     p2p = await pairing.join(invite);
     await refresh();
     notifyListeners();
+  }
+
+
+  Future<Map<String, Object?>> g11SyncProof() async {
+    final truths = await db.allRecords('truths');
+    final mutationRecords = await db.allRecords('mutations');
+    final liveCounts = await db.counts();
+    final frontier = brain2MutationFrontier(mutationRecords);
+    return {
+      'format': 'B2_G11_SYNC_PROOF',
+      'version': 1,
+      'surface': 'MOBILE',
+      'deviceId': deviceId,
+      'memoryRoot': await db.memoryRoot(),
+      'totalMessages': liveCounts['messages'] ?? 0,
+      'totalAtoms': liveCounts['atoms'] ?? 0,
+      'totalTruths': liveCounts['truths'] ?? 0,
+      'currentTruthCount':
+          truths.where((truth) => truth['status'] == 'CURRENT').length,
+      'mutationCount': liveCounts['mutations'] ?? mutationRecords.length,
+      'truthStateRoot': brain2TruthStateRoot(truths),
+      'mutationFrontierRoot': brain2MutationFrontierRoot(mutationRecords),
+      'mutationFrontier': frontier,
+      'syncStage': p2pStatus.stage.name,
+      'peerDeviceId': p2pStatus.peerDeviceId,
+      'generatedAt': DateTime.now().toUtc().toIso8601String(),
+    };
   }
 
   Future<void> mergeBothMemories() async {

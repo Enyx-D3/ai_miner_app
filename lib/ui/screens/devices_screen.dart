@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../app/brain2_controller.dart';
@@ -214,6 +217,41 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   ),
                   const SizedBox(height: 10),
                 ],
+
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          setState(() => busy = true);
+                          try {
+                            final proof = await widget.c.g11SyncProof();
+                            final payload =
+                                const JsonEncoder.withIndent('  ').convert(proof);
+                            await Clipboard.setData(ClipboardData(text: payload));
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'G11 sync proof copied. Compare it with brain2_sync_proof on Web.',
+                                ),
+                              ),
+                            );
+                          } catch (error) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Could not build sync proof: $error'),
+                              ),
+                            );
+                          } finally {
+                            if (mounted) setState(() => busy = false);
+                          }
+                        },
+                  icon: const Icon(Icons.verified_outlined),
+                  label: const Text('Copy G11 sync proof'),
+                ),
                 if (!scanning)
                   FilledButton.icon(
                     onPressed: busy
