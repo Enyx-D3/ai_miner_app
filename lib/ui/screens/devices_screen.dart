@@ -47,6 +47,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   bool scanning = false;
   bool busy = false;
   bool handled = false;
+  String? pairingError;
   late final MobileScannerController scannerController;
 
   @override
@@ -54,7 +55,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     super.initState();
     scannerController = MobileScannerController(
       formats: const [BarcodeFormat.qrCode],
-      detectionSpeed: DetectionSpeed.noDuplicates,
+      detectionSpeed: DetectionSpeed.normal,
       cameraResolution: const Size(1280, 720),
       autoZoom: true,
     );
@@ -78,12 +79,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
     setState(() {
       busy = true;
       scanning = false;
+      pairingError = null;
     });
     try {
       await widget.c.joinQr(raw);
     } catch (error) {
       handled = false;
       if (mounted) {
+        setState(() {
+          pairingError = '$error';
+          scanning = true;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Pairing failed: $error')),
         );
@@ -91,6 +97,19 @@ class _DevicesScreenState extends State<DevicesScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  Future<void> _pastePairingLink() async {
+    if (busy) return;
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final value = data?.text?.trim() ?? '';
+    if (value.isEmpty) {
+      if (mounted) {
+        setState(() => pairingError = 'Clipboard does not contain a pairing link.');
+      }
+      return;
+    }
+    await _accept(value);
   }
 
   @override
@@ -252,6 +271,25 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   icon: const Icon(Icons.verified_outlined),
                   label: const Text('Copy G11 sync proof'),
                 ),
+                if (pairingError != null) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff241414),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xff7a3030)),
+                    ),
+                    child: Text(
+                      'Pairing error: $pairingError',
+                      style: const TextStyle(
+                        color: Color(0xffffb8b8),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
                 if (!scanning)
                   FilledButton.icon(
                     onPressed: busy
@@ -306,6 +344,12 @@ class _DevicesScreenState extends State<DevicesScreen> {
                       ),
                     ),
                   ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: busy ? null : _pastePairingLink,
+                  icon: const Icon(Icons.content_paste),
+                  label: const Text('Paste pairing link'),
+                ),
                 if (scanning)
                   TextButton(
                     onPressed: () => setState(() => scanning = false),

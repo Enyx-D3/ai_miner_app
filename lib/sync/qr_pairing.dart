@@ -49,6 +49,15 @@ class Brain2MobilePairing {
     );
   }
 
+
+  bool _isLoopbackHost(String host) {
+    final value = host.toLowerCase();
+    return value == 'localhost' ||
+        value == '::1' ||
+        value == '0.0.0.0' ||
+        value.startsWith('127.');
+  }
+
   Brain2PairingInvite parse(String raw) {
     final uri = Uri.parse(raw.trim());
     if (uri.scheme != 'http' && uri.scheme != 'https') {
@@ -91,6 +100,15 @@ class Brain2MobilePairing {
         host: uri.host,
         port: uri.hasPort ? uri.port : null,
       ).toString();
+    }
+
+    final signalingUri = Uri.parse(signalingOrigin);
+    if (_isLoopbackHost(signalingUri.host)) {
+      throw StateError(
+        'Brain2 QR was detected, but its signaling origin is localhost '
+        '(${signalingUri.host}). A physical phone cannot reach the Mac through '
+        'localhost. Generate a fresh QR from a LAN-reachable Web session.',
+      );
     }
 
     return Brain2PairingInvite(
