@@ -15,6 +15,12 @@ import 'sync_contract.dart';
 const int _brain2TransportFramePayloadBytes = 8 * 1024;
 const int _brain2TransportMaxReassembledBytes = 64 * 1024 * 1024;
 
+bool brain2ShouldApplyRemoteAnswer({
+  required bool hasPeerConnection,
+  required bool awaitingRemoteAnswer,
+}) =>
+    hasPeerConnection && awaitingRemoteAnswer;
+
 String _bootstrapWireHashMaterial(
   String memoryRoot,
   String table,
@@ -85,6 +91,7 @@ class Brain2P2PSync {
   final Map<String, RTCDataChannel> _channels = {};
   final Map<String, List<RTCIceCandidate>> _pendingIce = {};
   final Set<String> _remoteDescriptionReady = {};
+  final Set<String> _awaitingRemoteAnswer = {};
   final Set<String> _flushScheduled = {};
   final Set<String> _awaitingAck = {};
   final Map<String, int> _bootstrapPeerMaxSequence = {};
@@ -185,6 +192,7 @@ class Brain2P2PSync {
     _pcs.clear();
     _pendingIce.clear();
     _remoteDescriptionReady.clear();
+    _awaitingRemoteAnswer.clear();
     api.close();
   }
 
@@ -346,6 +354,28 @@ class Brain2P2PSync {
     );
   }
 
+  bool _channelIsOpen(String peer) =>
+      _channels[peer]?.state == RTCDataChannelState.RTCDataChannelOpen;
+
+  Future<void> _ensureOpenChannel(
+    String peer, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    if (_channelIsOpen(peer)) return;
+
+    await connect(peer);
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (_channelIsOpen(peer)) return;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+
+    throw StateError(
+      'Brain2 P2P channel did not open after reconnect. '
+      'Keep Web AI Miner open on the same network and retry.',
+    );
+  }
+
   Future<void> mergeBothMemories() async {
     if (_memoryConflicts.isEmpty) {
       throw StateError('No different Brain2 memory is waiting to merge.');
@@ -358,17 +388,31 @@ class Brain2P2PSync {
     if (targetRoot.isEmpty) {
       throw StateError('Peer did not provide a memory root.');
     }
+    // Never enter the merge state until the direct channel is actually
+    // usable. If transport dropped, reconnect first and wait for OPEN.
+    await _ensureOpenChannel(peer);
+
     _merging = true;
     _status(
       Brain2P2PStage.bootstrapping,
       'Preparing deterministic merge. No local conversation data will be deleted…',
       peer: peer,
     );
-    await _send(peer, {
-      'type': 'merge_request',
-      'targetRoot': targetRoot,
-      'localSummary': await _summary(),
-    });
+    try {
+      await _send(peer, {
+        'type': 'merge_request',
+        'targetRoot': targetRoot,
+        'localSummary': await _summary(),
+      });
+    } catch (error) {
+      _merging = false;
+      _status(
+        Brain2P2PStage.memoryConflict,
+        'Merge transport failed before data transfer. Reconnect and retry. ($error)',
+        peer: peer,
+      );
+      rethrow;
+    }
   }
 
   Future<void> connect(String peer) async {
@@ -387,6 +431,7 @@ class Brain2P2PSync {
     _channels.remove(peer);
     _pendingIce.remove(peer);
     _remoteDescriptionReady.remove(peer);
+    _awaitingRemoteAnswer.remove(peer);
 
     _status(
       Brain2P2PStage.signaling,
@@ -402,6 +447,7 @@ class Brain2P2PSync {
     _attach(peer, channel);
     final offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    _awaitingRemoteAnswer.add(peer);
     await api.postSignal(
       fromDeviceId: deviceId,
       token: deviceToken,
@@ -505,14 +551,34 @@ class Brain2P2PSync {
       } else if (kind == 'answer') {
         if (payload == null) throw StateError('Answer signal has no payload.');
         final pc = _pcs[from];
-        // A consumed mailbox can still contain an answer from a superseded
-        // attempt. Without a live local offer there is nothing to answer.
-        if (pc == null) continue;
-        await _setRemoteDescription(
-          from,
-          pc,
-          RTCSessionDescription('${payload['sdp']}', '${payload['type']}'),
-        );
+
+        // Signaling mailboxes can contain a delayed/duplicate answer from an
+        // earlier offer. Applying an answer after the PeerConnection is already
+        // stable throws WEBRTC_SET_REMOTE_DESCRIPTION_ERROR. Only the current
+        // locally-created offer is allowed to consume one answer.
+        if (!brain2ShouldApplyRemoteAnswer(
+          hasPeerConnection: pc != null,
+          awaitingRemoteAnswer: _awaitingRemoteAnswer.contains(from),
+        )) {
+          continue;
+        }
+
+        try {
+          await _setRemoteDescription(
+            from,
+            pc!,
+            RTCSessionDescription('${payload['sdp']}', '${payload['type']}'),
+          );
+          _awaitingRemoteAnswer.remove(from);
+        } catch (error) {
+          final message = '$error';
+          if (message.contains('wrong state: stable') ||
+              message.contains('Called in wrong state: stable')) {
+            _awaitingRemoteAnswer.remove(from);
+            continue;
+          }
+          rethrow;
+        }
       } else if (kind == 'ice' && payload != null) {
         final rawIndex = payload['sdpMLineIndex'];
         final index =
