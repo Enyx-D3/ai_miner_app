@@ -15,6 +15,12 @@ import 'sync_contract.dart';
 const int _brain2TransportFramePayloadBytes = 8 * 1024;
 const int _brain2TransportMaxReassembledBytes = 64 * 1024 * 1024;
 
+bool brain2ShouldDispatchHello({
+  required bool channelPresent,
+  required bool channelOpen,
+}) =>
+    channelPresent && channelOpen;
+
 bool brain2ShouldApplyRemoteAnswer({
   required bool hasPeerConnection,
   required bool awaitingRemoteAnswer,
@@ -608,7 +614,18 @@ class Brain2P2PSync {
   }
 
   void _scheduleHello(String peer) {
+    // _attach() stores the channel before WebRTC reports OPEN. Mutation/reconcile
+    // timers must not attempt hello while the channel is still CONNECTING.
+    if (!_channelIsOpen(peer)) return;
     unawaited(_hello(peer).catchError((Object error) {
+      if (!_channelIsOpen(peer)) {
+        _status(
+          Brain2P2PStage.disconnected,
+          'Peer channel changed state before hello completed. Reconnect will resume safely.',
+          peer: peer,
+        );
+        return;
+      }
       _status(
         Brain2P2PStage.error,
         'P2P hello failed: $error',
@@ -619,9 +636,15 @@ class Brain2P2PSync {
 
   Future<void> _sendPhysicalText(String peer, String text) async {
     final channel = _channels[peer];
-    if (channel == null ||
-        channel.state != RTCDataChannelState.RTCDataChannelOpen) {
-      _channels.remove(peer);
+    if (channel == null) {
+      throw StateError('Brain2 P2P channel not open');
+    }
+    if (channel.state != RTCDataChannelState.RTCDataChannelOpen) {
+      // CONNECTING is a valid transient state. Keep it registered so the
+      // onDataChannelState OPEN callback can finish the handshake.
+      if (channel.state == RTCDataChannelState.RTCDataChannelClosed) {
+        _channels.remove(peer);
+      }
       throw StateError('Brain2 P2P channel not open');
     }
     while ((await channel.getBufferedAmount()) > 512 * 1024) {
