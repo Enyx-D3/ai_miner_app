@@ -1,0 +1,180 @@
+diff --git a/lib/app/brain2_controller.dart b/lib/app/brain2_controller.dart
+index b5d92bc..2e9c55d 100644
+--- a/lib/app/brain2_controller.dart
++++ b/lib/app/brain2_controller.dart
+@@ -66,6 +66,9 @@ class Brain2Controller extends ChangeNotifier {
+         deviceId,
+         onStatus: (status) {
+           p2pStatus = status;
++          if (status.stage == Brain2P2PStage.synced) {
++            unawaited(refresh());
++          }
+           notifyListeners();
+         },
+       );
+diff --git a/lib/sync/p2p_sync.dart b/lib/sync/p2p_sync.dart
+index 2e3d512..9687720 100644
+--- a/lib/sync/p2p_sync.dart
++++ b/lib/sync/p2p_sync.dart
+@@ -53,8 +53,13 @@ class Brain2P2PSync {
+   final Set<String> _flushScheduled = {};
+   final Set<String> _awaitingAck = {};
+   final Map<String, int> _bootstrapPeerMaxSequence = {};
++  final Map<String, int> _remoteLatestSequence = {};
++  final Map<String, int> _remoteMessageCount = {};
++  final Map<String, int> _remoteAtomCount = {};
++  final Map<String, int> _remoteTruthCount = {};
+ 
+   Timer? _signalPoll;
++  Timer? _reconcileTimer;
+   StreamSubscription<MutationCommittedEvent>? _mutationSubscription;
+   bool _polling = false;
+   bool _disposed = false;
+@@ -97,9 +102,17 @@ class Brain2P2PSync {
+         )
+         .listen((_) {
+       for (final peer in _channels.keys) {
+-        _scheduleFlush(peer);
++        unawaited(_hello(peer));
+       }
+     });
++    _reconcileTimer ??= Timer.periodic(
++      const Duration(seconds: 5),
++      (_) {
++        for (final peer in _channels.keys) {
++          unawaited(_hello(peer));
++        }
++      },
++    );
+     await _consumeSignalsSafe();
+   }
+ 
+@@ -107,6 +120,8 @@ class Brain2P2PSync {
+     _disposed = true;
+     _signalPoll?.cancel();
+     _signalPoll = null;
++    _reconcileTimer?.cancel();
++    _reconcileTimer = null;
+     await _mutationSubscription?.cancel();
+     _mutationSubscription = null;
+     for (final c in _channels.values) {
+@@ -413,6 +428,18 @@ class Brain2P2PSync {
+         final remoteMessages = remote['totalMessages'] is num
+             ? (remote['totalMessages'] as num).toInt()
+             : int.tryParse('${remote['totalMessages']}') ?? 0;
++        final remoteLatest = remote['latestLocalSequence'] is num
++            ? (remote['latestLocalSequence'] as num).toInt()
++            : int.tryParse('${remote['latestLocalSequence']}') ?? 0;
++        _remoteMessageCount[peer] = remoteMessages;
++        _remoteAtomCount[peer] = remote['totalAtoms'] is num
++            ? (remote['totalAtoms'] as num).toInt()
++            : int.tryParse('${remote['totalAtoms']}') ?? 0;
++        _remoteTruthCount[peer] = remote['totalTruths'] is num
++            ? (remote['totalTruths'] as num).toInt()
++            : int.tryParse('${remote['totalTruths']}') ?? 0;
++        _remoteLatestSequence[peer] = remoteLatest;
++        final inboundApplied = await db.peerCursor(peer, peer);
+         if (localMessages == 0 && remoteMessages > 0) {
+           _status(
+             Brain2P2PStage.bootstrapping,
+@@ -434,10 +461,20 @@ class Brain2P2PSync {
+             'Memory verified. Synchronizing missing deltas…',
+             peer: peer,
+           );
++          if (remoteLatest > inboundApplied) {
++            await _send(peer, {
++              'type': 'sync_request',
++              'fromSequence': inboundApplied + 1,
++            });
++          }
+           _scheduleFlush(peer, immediate: true);
+         }
+         break;
+ 
++      case 'sync_request':
++        _scheduleFlush(peer, immediate: true);
++        break;
++
+       case 'bootstrap_request':
+         _status(
+           Brain2P2PStage.bootstrapping,
+@@ -554,11 +591,7 @@ class Brain2P2PSync {
+           'sequence': lastApplied,
+           'manifestHash': manifestHash,
+         });
+-        _status(
+-          Brain2P2PStage.synced,
+-          'Brain2 replicas are synchronized.',
+-          peer: peer,
+-        );
++        await _markConvergedIfPossible(peer);
+         break;
+ 
+       case 'ack':
+@@ -568,12 +601,8 @@ class Brain2P2PSync {
+             : int.tryParse('${message['sequence']}') ?? 0;
+         await db.setPeerCursor(peer, origin, sequence);
+         _awaitingAck.remove(peer);
+-        _status(
+-          Brain2P2PStage.synced,
+-          'Peer acknowledged through delta $sequence.',
+-          peer: peer,
+-        );
+         _scheduleFlush(peer);
++        await _markConvergedIfPossible(peer);
+         break;
+ 
+       case 'ping':
+@@ -673,6 +702,39 @@ class Brain2P2PSync {
+     });
+   }
+ 
++  Future<void> _markConvergedIfPossible(String peer) async {
++    final localLatest = int.tryParse(await db.meta('origin_sequence')) ?? 0;
++    final outboundAcked = await db.peerCursor(peer, deviceId);
++    final inboundApplied = await db.peerCursor(peer, peer);
++    final remoteLatest = _remoteLatestSequence[peer] ?? 0;
++    final remoteMessages = _remoteMessageCount[peer] ?? 0;
++    final remoteAtoms = _remoteAtomCount[peer] ?? 0;
++    final remoteTruths = _remoteTruthCount[peer] ?? 0;
++    final localMessages = await db.total('messages');
++    final localAtoms = await db.total('atoms');
++    final localTruths = await db.total('truths');
++    final inboundOk = inboundApplied >= remoteLatest;
++    final outboundOk = outboundAcked >= localLatest;
++    final countsMatch =
++        localMessages == remoteMessages &&
++        localAtoms == remoteAtoms &&
++        localTruths == remoteTruths;
++
++    if (inboundOk && outboundOk && countsMatch) {
++      _status(
++        Brain2P2PStage.synced,
++        'Brain2 replicas are synchronized · local $localMessages messages · peer $remoteMessages messages.',
++        peer: peer,
++      );
++    } else {
++      _status(
++        Brain2P2PStage.syncingDeltas,
++        'Connected · waiting for missing Brain2 deltas…',
++        peer: peer,
++      );
++    }
++  }
++
+   Future<void> _sendPending(String peer) async {
+     final cursor = await db.peerCursor(peer, deviceId);
+     final mutations = await db.pendingLocalAfter(
+@@ -681,11 +743,7 @@ class Brain2P2PSync {
+       limit: brain2SyncBatchLimit,
+     );
+     if (mutations.isEmpty) {
+-      _status(
+-        Brain2P2PStage.synced,
+-        'Brain2 replicas are synchronized.',
+-        peer: peer,
+-      );
++      await _markConvergedIfPossible(peer);
+       return;
+     }
+ 

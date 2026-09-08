@@ -1,0 +1,1 @@
+The source package intentionally focuses on canonical Dart/runtime code. If Android/iOS runner folders are incomplete on your machine, run `flutter create . --platforms=android,ios` from this project root, then preserve `lib/`, `pubspec.yaml`, and the native library placement documented here.

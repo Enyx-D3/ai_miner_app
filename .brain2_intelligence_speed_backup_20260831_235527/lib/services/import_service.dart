@@ -1,0 +1,502 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../core/contracts.dart';
+import '../core/identity.dart';
+import '../contextvault/contextvault_service.dart';
+import '../intelligence/mobile_intelligence_pipeline.dart';
+import '../intelligence/project_resolver.dart';
+import '../miner/multi_provider_export_extractor.dart';
+import '../storage/brain2_database.dart';
+import '../storage/mutation_service.dart';
+import 'json_array_stream.dart';
+
+typedef CanonicalImportProgress = void Function(
+  int conversations,
+  int messages,
+);
+
+typedef IntelligenceBuildProgress = void Function(
+  int completed,
+  int total,
+);
+
+class ImportSummary {
+  final int conversations;
+  final int messages;
+  final String sourceLabel;
+  final bool nativeContextVaultUsed;
+  final List<String> conversationIds;
+  final List<String> projectIds;
+
+  const ImportSummary(
+    this.conversations,
+    this.messages,
+    this.sourceLabel, {
+    required this.nativeContextVaultUsed,
+    this.conversationIds = const <String>[],
+    this.projectIds = const <String>[],
+  });
+}
+
+class Brain2ImportService {
+  final Brain2Database db;
+  final MutationService mutations;
+  final ContextVaultService contextVault;
+  final MobileIntelligencePipeline intelligence;
+
+  Brain2ImportService(
+    this.db,
+    this.mutations, {
+    ContextVaultService? contextVault,
+    MobileIntelligencePipeline? intelligence,
+  })  : contextVault = contextVault ?? ContextVaultService(),
+        intelligence = intelligence ?? MobileIntelligencePipeline(db, mutations);
+
+  Future<ImportSummary?> pickAndImport() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['zip', 'json'],
+      withData: false,
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final picked = result.files.single;
+    final path = picked.path;
+    if (path == null) {
+      throw StateError(
+        'The selected file is not available as a local file. Please choose it again.',
+      );
+    }
+
+    final temp = await getTemporaryDirectory();
+    final work = Directory(
+      '${temp.path}${Platform.pathSeparator}brain2-import-'
+      '${DateTime.now().millisecondsSinceEpoch}',
+    );
+    await work.create(recursive: true);
+    final preparedPath =
+        '${work.path}${Platform.pathSeparator}combined_conversations.json';
+    try {
+      final prepared = await MultiProviderExportExtractor().prepare(
+        inputPath: path,
+        inputName: picked.name,
+        outputPath: preparedPath,
+      );
+      final imported = await importPreparedJsonFile(
+        prepared.jsonPath,
+        sourceLabel: picked.name,
+      );
+      await buildIntelligence(imported);
+      return imported;
+    } finally {
+      if (await work.exists()) {
+        try {
+          await work.delete(recursive: true);
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Canonical streaming import.
+  ///
+  /// Crucially, this does NOT call File.readAsBytes()/jsonDecode() on the full
+  /// prepared export. Only one conversation object is materialized at a time.
+  /// The mining flow has already run native ContextVault before entering this
+  /// stage, so it can pass [contextVaultAlreadyProcessed] and avoid a second
+  /// full native digest as well.
+  Future<ImportSummary> importPreparedJsonFile(
+    String jsonPath, {
+    required String sourceLabel,
+    bool contextVaultAlreadyProcessed = false,
+    Map<String, Object?>? contextVaultSummary,
+    CanonicalImportProgress? onProgress,
+  }) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final sourceIds = <String, String>{};
+
+    Future<String> sourceIdFor(String provider) async {
+      final existing = sourceIds[provider];
+      if (existing != null) return existing;
+      final sourceId = canonicalId(
+        'src',
+        [provider, sourceLabel, 'archive'],
+      );
+      await mutations.upsert(
+        'sources',
+        {
+          'id': sourceId,
+          'provider': provider,
+          'label': sourceLabel,
+          'sourceType': 'archive',
+          'createdAt': now,
+          'lastSeenAt': now,
+          'schemaVersion': brain2SchemaVersion,
+          'contextVaultEngine': contextVaultAlreadyProcessed
+              ? 'NATIVE_ANDROID_NORMALIZED'
+              : 'CANONICAL_STREAM_ONLY',
+          'contextVaultSummary': contextVaultSummary ?? const <String, Object?>{},
+        },
+        type: 'IMPORT_SOURCE',
+      );
+      sourceIds[provider] = sourceId;
+      return sourceId;
+    }
+
+    var conversationCount = 0;
+    var messageCount = 0;
+    final conversationIds = <String>[];
+    final projectIds = <String>{};
+
+    await for (final conversationRaw in streamJsonObjectArrayFile(jsonPath)) {
+      final i = conversationCount;
+      final provider = _provider(conversationRaw);
+      final sourceId = await sourceIdFor(provider);
+      final externalId =
+          '${conversationRaw['id'] ?? conversationRaw['conversation_id'] ?? 'conversation-${i + 1}'}';
+      final title = normalizeText(
+        '${conversationRaw['title'] ?? 'Conversation ${i + 1}'}',
+      );
+      final conversationId = canonicalId(
+        'conv',
+        [provider, externalId.isEmpty ? title : externalId],
+      );
+      final messages = _messages(
+        conversationRaw,
+        conversationId,
+        sourceId,
+        provider,
+      );
+      if (messages.isEmpty) continue;
+
+      final resolution = resolveProject(title: title, messages: messages);
+      final conversation = <String, Object?>{
+        'id': conversationId,
+        'sourceId': sourceId,
+        'provider': provider,
+        'externalId': externalId,
+        'title': title,
+        'createdAt': _date(conversationRaw['create_time']),
+        'updatedAt': _date(conversationRaw['update_time']) ??
+            messages.last['occurredAt'],
+        'projectId': resolution.projectId,
+        'messageCount': messages.length,
+        'wordCount': messages.fold<int>(
+          0,
+          (sum, message) => sum + ((message['wordCount'] as int?) ?? 0),
+        ),
+        'schemaVersion': brain2SchemaVersion,
+      };
+
+      final existingProject = await db.getRecord('projects', resolution.projectId);
+      final projectConversationIds = <String>{
+        ..._stringList(existingProject?['conversationIds']),
+        conversationId,
+      }.toList();
+      final aliases = <String>{
+        ..._stringList(existingProject?['aliases']),
+        ...resolution.aliases,
+      }.toList();
+      final tags = <String>{
+        ..._stringList(existingProject?['tags']),
+        ..._keywords(title),
+      }.toList();
+      final project = <String, Object?>{
+        'id': resolution.projectId,
+        'slug': resolution.slug,
+        'name': existingProject?['name'] ?? resolution.name,
+        'summary': existingProject?['summary'] ?? 'Imported from $sourceLabel',
+        'aliases': aliases,
+        'resolverConfidence': resolution.confidence,
+        'createdAt': existingProject?['createdAt'] ?? now,
+        'updatedAt': conversation['updatedAt'] ?? now,
+        'conversationIds': projectConversationIds,
+        'atomIds': _stringList(existingProject?['atomIds']),
+        'openTickIds': _stringList(existingProject?['openTickIds']),
+        'tags': tags,
+        'atomCount': existingProject?['atomCount'] ?? 0,
+        'schemaVersion': brain2SchemaVersion,
+      };
+
+      // Web-parity performance rule: one conversation is one durable atomic
+      // commit. This replaces N+2 SQLite/mutation commits for N messages with
+      // a single transaction and a single P2P-replicable mutation.
+      await mutations.upsertBatch(
+        {
+          'projects': <Map<String, Object?>>[project],
+          'conversations': <Map<String, Object?>>[conversation],
+          'messages': messages,
+        },
+        type: 'IMPORT_CONVERSATION_BATCH',
+        primaryTable: 'conversations',
+        entityType: 'conversations',
+        entityId: conversationId,
+      );
+      messageCount += messages.length;
+
+      conversationCount++;
+      conversationIds.add(conversationId);
+      projectIds.add(resolution.projectId);
+      onProgress?.call(conversationCount, messageCount);
+
+      // Give Flutter/Android a scheduling point between conversations instead
+      // of monopolizing the event queue for a long import.
+      if (conversationCount % 8 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    // Every canonical upsert updated the Reader index incrementally already.
+    // Rebuilding the entire index here used to duplicate work and could create
+    // another large memory spike at the end of import.
+    await db.setMeta(
+      'reader_index_state',
+      conversationCount == 0 ? 'EMPTY' : 'READY',
+    );
+
+    return ImportSummary(
+      conversationCount,
+      messageCount,
+      sourceLabel,
+      nativeContextVaultUsed: contextVaultAlreadyProcessed,
+      conversationIds: List<String>.unmodifiable(conversationIds),
+      projectIds: List<String>.unmodifiable(projectIds),
+    );
+  }
+
+  /// Builds G+F+I+B250, Current Truth, LifeWiki and notebooks after canonical
+  /// storage is safely persisted. This is intentionally a separate stage from
+  /// canonical import so progress and failures reflect the real pipeline.
+  Future<void> buildIntelligence(
+    ImportSummary imported, {
+    IntelligenceBuildProgress? onProgress,
+  }) async {
+    final total = imported.conversationIds.length;
+    for (var i = 0; i < total; i++) {
+      await intelligence.processConversation(
+        imported.conversationIds[i],
+        refreshSnapshots: false,
+      );
+      onProgress?.call(i + 1, total);
+      if ((i + 1) % 8 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    for (final projectId in imported.projectIds) {
+      await intelligence.refreshProjectSnapshots(projectId);
+    }
+  }
+
+  /// Compatibility entry point for callers that already own bytes. It writes
+  /// them to a temporary file, then uses the same bounded-memory streaming
+  /// canonical importer instead of decoding the whole array in memory.
+  Future<ImportSummary> importJsonBytes(
+    Uint8List bytes, {
+    required String sourceLabel,
+  }) async {
+    final temp = await getTemporaryDirectory();
+    final file = File(
+      '${temp.path}${Platform.pathSeparator}brain2-json-'
+      '${DateTime.now().microsecondsSinceEpoch}.json',
+    );
+    try {
+      await file.writeAsBytes(bytes, flush: false);
+      final imported = await importPreparedJsonFile(
+        file.path,
+        sourceLabel: sourceLabel,
+      );
+      await buildIntelligence(imported);
+      return imported;
+    } finally {
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  List<Map<String, Object?>> _messages(
+    Map<String, Object?> conversation,
+    String conversationId,
+    String sourceId,
+    String provider,
+  ) {
+    final out = <Map<String, Object?>>[];
+    final mapping = conversation['mapping'];
+    if (mapping is Map) {
+      final nodes = mapping.cast<String, Object?>();
+      final ordered = nodes.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      var sequence = 0;
+      for (final entry in ordered) {
+        final node = entry.value;
+        if (node is! Map) continue;
+        final message = (node['message'] as Map?)?.cast<String, Object?>();
+        if (message == null) continue;
+        final text = _messageText(message);
+        if (text.isEmpty) continue;
+        final role = '${(message['author'] as Map?)?['role'] ?? 'unknown'}';
+        final nativeId = '${message['id'] ?? entry.key}';
+        final id = canonicalMessageIdSync(
+          provider: provider,
+          conversationId: conversationId,
+          providerMessageId: nativeId,
+          providerNodeId: entry.key,
+          parentProviderNodeId: '${node['parent'] ?? ''}',
+          sequence: sequence,
+          role: role,
+          text: text,
+        );
+        out.add(
+          _message(
+            id,
+            conversationId,
+            sourceId,
+            provider,
+            nativeId,
+            role,
+            text,
+            sequence,
+            _date(message['create_time']),
+            entry.key,
+            '${node['parent'] ?? ''}',
+          ),
+        );
+        sequence++;
+      }
+    } else if (conversation['messages'] is List) {
+      var sequence = 0;
+      for (final wrapper in conversation['messages'] as List) {
+        if (wrapper is! Map) continue;
+        final raw = wrapper['message'] is Map ? wrapper['message'] : wrapper;
+        if (raw is! Map) continue;
+        final message = raw.cast<String, Object?>();
+        final text = _messageText(message);
+        if (text.isEmpty) continue;
+        final role = '${(message['author'] as Map?)?['role'] ?? 'unknown'}';
+        final nativeId = '${message['id'] ?? '$conversationId-$sequence'}';
+        final id = canonicalMessageIdSync(
+          provider: provider,
+          conversationId: conversationId,
+          providerMessageId: nativeId,
+          sequence: sequence,
+          role: role,
+          text: text,
+        );
+        out.add(
+          _message(
+            id,
+            conversationId,
+            sourceId,
+            provider,
+            nativeId,
+            role,
+            text,
+            sequence,
+            _date(message['create_time']),
+            null,
+            null,
+          ),
+        );
+        sequence++;
+      }
+    }
+    return out;
+  }
+
+  Map<String, Object?> _message(
+    String id,
+    String conversationId,
+    String sourceId,
+    String provider,
+    String nativeId,
+    String role,
+    String text,
+    int sequence,
+    String? occurredAt,
+    String? nodeId,
+    String? parentNodeId,
+  ) {
+    final normalized = normalizeText(text);
+    final hash = sha256Hex(
+      '$brain2SchemaVersion|$provider|$conversationId|$nativeId|'
+      '${nodeId ?? ''}|${parentNodeId ?? ''}||$sequence|$role|$normalized',
+    );
+    return {
+      'id': id,
+      'conversationId': conversationId,
+      'sourceId': sourceId,
+      'provider': provider,
+      'externalId': nativeId,
+      'role': role,
+      'text': normalized,
+      'createdAt': occurredAt,
+      'occurredAt': occurredAt,
+      'timestampSource': 'archive',
+      'sequence': sequence,
+      'providerMessageId': nativeId,
+      'providerNodeId': nodeId,
+      'parentProviderNodeId': parentNodeId,
+      'hash': hash,
+      'wordCount': normalized.split(' ').where((part) => part.isNotEmpty).length,
+      'schemaVersion': brain2SchemaVersion,
+    };
+  }
+
+  String _provider(Map<String, Object?> conversation) {
+    final raw = '${conversation['_brain2_provider'] ?? conversation['provider'] ?? 'chatgpt'}'
+        .trim()
+        .toLowerCase();
+    if (raw.isEmpty) return 'generic';
+    if (raw.contains('openai') || raw.contains('chatgpt')) return 'chatgpt';
+    if (raw.contains('anthropic') || raw.contains('claude')) return 'claude';
+    if (raw.contains('gemini') || raw.contains('bard') || raw == 'google') {
+      return 'gemini';
+    }
+    if (raw.contains('copilot') || raw.contains('bing') || raw == 'microsoft') {
+      return 'copilot';
+    }
+    if (raw.contains('poe')) return 'poe';
+    if (raw.contains('perplexity')) return 'perplexity';
+    return raw.replaceAll(RegExp(r'[^a-z0-9_-]+'), '_');
+  }
+
+  String _messageText(Map<String, Object?> message) {
+    final content = message['content'];
+    if (content is! Map) return '';
+    final parts = content['parts'];
+    if (parts is List) {
+      return normalizeText(parts.whereType<String>().join('\n'));
+    }
+    final text = content['text'];
+    return text is String ? normalizeText(text) : '';
+  }
+
+  String? _date(Object? value) {
+    if (value == null) return null;
+    if (value is num) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        (value * 1000).round(),
+        isUtc: true,
+      ).toIso8601String();
+    }
+    return DateTime.tryParse('$value')?.toUtc().toIso8601String();
+  }
+
+  List<String> _keywords(String value) => normalizeText(value)
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((term) => term.length >= 4)
+      .take(12)
+      .toList();
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return value.map((item) => '$item').where((item) => item.isNotEmpty).toList();
+  }
+}

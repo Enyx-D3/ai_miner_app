@@ -1,0 +1,332 @@
+import '../core/contracts.dart';
+import '../core/identity.dart';
+import '../storage/brain2_database.dart';
+import '../storage/mutation_service.dart';
+import 'atomization_stack.dart';
+import 'canonical_truth.dart';
+import 'intelligence_layer.dart';
+import 'truth_engine.dart';
+import 'truth_batch_engine.dart';
+import 'pattern_engine.dart';
+
+class MobileIntelligencePipeline {
+  final Brain2Database db;
+  final MutationService mutations;
+  late final MobileTruthEngine truths = MobileTruthEngine(db, mutations);
+  late final MobileTruthBatchEngine batchTruths = MobileTruthBatchEngine(db);
+  late final MobileIntelligenceLayer intelligenceLayer = MobileIntelligenceLayer(db);
+  late final MobilePatternEngine patterns = MobilePatternEngine(db, mutations);
+
+  void beginBuildSession() => batchTruths.reset();
+  void endBuildSession() => batchTruths.reset();
+
+  MobileIntelligencePipeline(this.db, this.mutations);
+
+  Future<void> processConversation(
+    String conversationId, {
+    bool refreshSnapshots = true,
+  }) async {
+    final conversation = await db.getRecord('conversations', conversationId);
+    if (conversation == null) return;
+    final messages = await db.recordsByJsonFields(
+      'messages',
+      {'conversationId': conversationId},
+    );
+    messages.sort(
+      (a, b) => ((a['sequence'] as num?)?.toInt() ?? 0)
+          .compareTo((b['sequence'] as num?)?.toInt() ?? 0),
+    );
+    await processConversationData(
+      conversation,
+      messages,
+      refreshSnapshots: refreshSnapshots,
+    );
+  }
+
+  /// Import-time fast path. The importer already owns the conversation and its
+  /// messages, so it can avoid rescanning the entire message table per thread.
+  Future<void> processConversationData(
+    Map<String, Object?> conversation,
+    List<Map<String, Object?>> messages, {
+    bool refreshSnapshots = true,
+  }) async {
+    final atoms = <Map<String, Object?>>[];
+    final truthInputs = <TruthAtomInput>[];
+
+    for (final message in messages) {
+      final messageAtoms = _atomize(message, conversation);
+      final role = '${message['role'] ?? ''}';
+      atoms.addAll(messageAtoms);
+      for (final atom in messageAtoms) {
+        truthInputs.add(TruthAtomInput(atom, role));
+      }
+    }
+
+    // Performance-critical web-parity rule: never commit one mutation per atom.
+    // Normal conversations become one batch; very large conversations are
+    // bounded so mutation JSON/P2P payloads do not grow without limit.
+    const atomBatchSize = 192;
+    final projectId = '${conversation['projectId'] ?? ''}';
+    final conversationId = '${conversation['id'] ?? ''}';
+
+    for (var offset = 0; offset < atoms.length; offset += atomBatchSize) {
+      final end = (offset + atomBatchSize).clamp(0, atoms.length).toInt();
+      final atomChunk = atoms.sublist(offset, end);
+      final truthChunk = truthInputs.sublist(offset, end);
+      final truthResult = await batchTruths.reconcile(truthChunk);
+      final writes = <String, List<Map<String, Object?>>>{
+        'atoms': atomChunk,
+      };
+      if (truthResult.truthWrites.isNotEmpty) {
+        writes['truths'] = truthResult.truthWrites;
+      }
+
+      try {
+        await mutations.upsertBatch(
+          writes,
+          type: 'INTELLIGENCE_ATOM_TRUTH_BATCH',
+          primaryTable: 'atoms',
+          entityType: 'conversations',
+          entityId: '$conversationId:$offset',
+        );
+      } catch (_) {
+        if (projectId.isNotEmpty) batchTruths.invalidateProject(projectId);
+        rethrow;
+      }
+
+      if ((offset ~/ atomBatchSize) % 4 == 3) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    if (refreshSnapshots) {
+      await refreshProjectSnapshots(projectId);
+    }
+  }
+
+  List<Map<String, Object?>> _atomize(
+    Map<String, Object?> message,
+    Map<String, Object?> conversation,
+  ) {
+    final text = normalizeText('${message['text'] ?? ''}');
+    if (text.isEmpty) return const [];
+
+    final sentences = text
+        .split(RegExp(r'(?<=[.!?])\s+|\n+'))
+        .map(normalizeText)
+        .where((sentence) => sentence.length >= 4)
+        .toList();
+    final chunks = sentences.isEmpty ? <String>[text] : sentences;
+    final out = <Map<String, Object?>>[];
+    var cursor = 0;
+
+    for (var i = 0; i < chunks.length; i++) {
+      final sentence = chunks[i];
+      final start = text.indexOf(sentence, cursor);
+      final safeStart = start < 0 ? cursor : start;
+      final end = (safeStart + sentence.length).clamp(0, text.length).toInt();
+      cursor = end;
+      final kind = _kind(sentence);
+      final subject = _subject(sentence);
+      final value = _value(sentence, kind);
+      final intrinsic = intrinsicAtomSufficiency(
+        sentence,
+        subject,
+        value: value,
+      );
+      final strictDecision = evaluateStrictCurrentTruthCandidate(
+        role: '${message['role'] ?? ''}',
+        text: sentence,
+        kind: kind,
+        sourceValid: '${message['sourceId'] ?? ''}'.isNotEmpty,
+        timestampValid: '${message['occurredAt'] ?? message['createdAt'] ?? ''}'.isNotEmpty,
+      );
+
+      out.add({
+        'id': canonicalId('atom', ['${message['id']}', i, sentence]),
+        'projectId': conversation['projectId'],
+        'conversationId': message['conversationId'],
+        'messageId': message['id'],
+        'sourceId': message['sourceId'],
+        'text': sentence,
+        'kind': kind,
+        'subject': subject,
+        'canonicalSubject': subject.toLowerCase(),
+        'value': value,
+        'scope': null,
+        'polarity': _polarity(sentence),
+        'confidence': intrinsic,
+        'keywords': _terms(sentence).take(12).toList(),
+        'sourceStart': safeStart,
+        'sourceEnd': end,
+        'intrinsicSufficiency': intrinsic,
+        'atomizationStack': atomizationStackVersion,
+        'ruleTrace': <String>[
+          strictTruthRuleTrace(strictDecision),
+          strictDecision.eligible ? 'strict_truth:eligible' : 'strict_truth:residual',
+        ],
+        'strictTruthTier': strictDecision.tier.name.toUpperCase(),
+        'strictTruthReason': strictDecision.reason,
+        'strictTruthBlocked': strictDecision.blocked,
+        'createdAt': message['occurredAt'] ??
+            message['createdAt'] ??
+            DateTime.now().toUtc().toIso8601String(),
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        'schemaVersion': brain2SchemaVersion,
+      });
+    }
+    return out;
+  }
+
+  String _kind(String value) {
+    final text = value.toLowerCase();
+    if (RegExp(
+      r"\b(decide|decided|we will|we'll|use .* instead|canonical|final)\b",
+    ).hasMatch(text)) {
+      return 'decision';
+    }
+    if (RegExp(
+      r"\b(must|never|cannot|can't|required|constraint|only)\b",
+    ).hasMatch(text)) {
+      return 'constraint';
+    }
+    if (RegExp(r'\b(todo|need to|next|should|implement|fix|build)\b')
+        .hasMatch(text)) {
+      return 'task';
+    }
+    if (RegExp(r'\b(hypothesis|maybe|perhaps|could|might)\b').hasMatch(text)) {
+      return 'hypothesis';
+    }
+    return 'fact';
+  }
+
+  String _subject(String value) {
+    final words = _terms(value).take(8).toList();
+    return words.isEmpty ? normalizeText(value) : words.join(' ');
+  }
+
+  String? _value(String text, String kind) {
+    if (!const {'decision', 'constraint', 'fact', 'task'}.contains(kind)) {
+      return null;
+    }
+    final parts = text.split(
+      RegExp(r'\b(is|are|use|be|to)\b', caseSensitive: false),
+    );
+    return parts.length > 1 ? normalizeText(parts.last) : null;
+  }
+
+  String _polarity(String text) => RegExp(
+        r"\b(no|not|never|cannot|can't|without)\b",
+        caseSensitive: false,
+      ).hasMatch(text)
+          ? 'NEGATIVE'
+          : 'NEUTRAL';
+
+  Iterable<String> _terms(String text) => normalizeText(text)
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((term) => term.length >= 3);
+
+  Future<void> refreshProjectSnapshots(String projectId) async {
+    if (projectId.isEmpty) return;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final truthRows = await db.recordsByJsonFields(
+      'truths',
+      {'projectId': projectId},
+      newestFirst: true,
+      limit: 1200,
+    );
+    final atoms = await db.recordsByJsonFields(
+      'atoms',
+      {'projectId': projectId},
+      newestFirst: true,
+      limit: 2000,
+    );
+    final current = truthRows
+        .where((truth) => '${truth['status']}' == 'CURRENT')
+        .take(40)
+        .toList();
+    final conflicts = truthRows
+        .where(
+          (truth) =>
+              '${truth['status']}' == 'CONFLICTING' ||
+              '${truth['status']}' == 'PENDING_REVIEW',
+        )
+        .take(20)
+        .toList();
+    final important = atoms
+        .where(
+          (atom) => const {'decision', 'constraint', 'hypothesis'}
+              .contains('${atom['kind']}'),
+        )
+        .take(30)
+        .toList();
+    final openQuestions = atoms
+        .where((atom) => '${atom['text']}'.contains('?'))
+        .take(20)
+        .toList();
+    final changes = truthRows
+        .where(
+          (truth) => const {'SUPERSEDES', 'REFINES', 'CONTRADICTS'}
+              .contains('${truth['relation']}'),
+        )
+        .take(30)
+        .toList();
+
+    final intelligenceSnapshot = await intelligenceLayer.buildProjectIntelligence(
+      projectId,
+      truthRows: truthRows,
+      atoms: atoms,
+    );
+    final wikiSnapshot = <String, Object?>{
+      'id': canonicalId('wiki', [projectId]),
+      'projectId': projectId,
+      'currentTruth': current,
+      'importantIdeas': important,
+      'decisions': truthRows
+          .where((truth) => '${truth['kind']}' == 'decision')
+          .take(40)
+          .toList(),
+      'changes': changes,
+      'conflicts': conflicts,
+      'openQuestions': openQuestions,
+      'evidenceAtomIds': atoms.take(80).map((atom) => '${atom['id']}').toList(),
+      'createdAt': now,
+      'updatedAt': now,
+      'schemaVersion': brain2SchemaVersion,
+    };
+    final notebookSnapshot = <String, Object?>{
+      'id': canonicalId('notebook', [projectId]),
+      'projectId': projectId,
+      'now': current.take(8).toList(),
+      'whatChanged': changes.take(12).toList(),
+      'currentTruth': current.take(20).toList(),
+      'importantIdeas': important.take(12).toList(),
+      'activeHypotheses': atoms
+          .where((atom) => '${atom['kind']}' == 'hypothesis')
+          .take(12)
+          .toList(),
+      'blockers': conflicts.take(10).toList(),
+      'openQuestions': openQuestions.take(12).toList(),
+      'nextActions':
+          atoms.where((atom) => '${atom['kind']}' == 'task').take(12).toList(),
+      'createdAt': now,
+      'updatedAt': now,
+      'schemaVersion': brain2SchemaVersion,
+    };
+
+    // LifeWiki + Notebook + intelligence snapshot are one durable commit.
+    await mutations.upsertBatch(
+      {
+        'intelligenceSnapshots': <Map<String, Object?>>[intelligenceSnapshot],
+        'wikiSnapshots': <Map<String, Object?>>[wikiSnapshot],
+        'notebookSnapshots': <Map<String, Object?>>[notebookSnapshot],
+      },
+      type: 'PROJECT_DERIVED_SNAPSHOT_BATCH',
+      primaryTable: 'intelligenceSnapshots',
+      entityType: 'projects',
+      entityId: projectId,
+    );
+    await patterns.refresh(limit: 250);
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "product": "Brain2 AI Miner Mobile",
+  "release": "9.5.0",
+  "build": 950,
+  "architecture": "B2_LOCKED_ARCHITECTURE_V1",
+  "canonical_schema_version": 10,
+  "sqlite_migration_level": 11,
+  "primary_flow": "CHATGPT_ZIP_TO_NATIVE_CONTEXTVAULT_TO_DIGEST_TO_BRAIN2_MEMORY",
+  "asif_reader": "PURE_DART",
+  "contextvault": "WEB_EXACT_CORE_SOURCE_PLUS_MOBILE_FILE_FFI_ANDROID_BINARY_BUILD_REQUIRED",
+  "contextvault_mobile_exports": [
+    "cv_mobile_digest_markdown_file",
+    "cv_mobile_last_error",
+    "cv_mobile_free_string"
+  ],
+  "mrs": "CANONICAL_CONDITIONAL_ROUTER_WITH_PLUGGABLE_MOBILE_MODEL_ADAPTER",
+  "b2m": "IMPORT_EXPORT_INTEGRITY_AND_MEMORY_ROOT_GUARD",
+  "p2p": "MOBILE_QR_JOIN_PLUS_GLOBAL_DELTA_SOURCE_PRESENT_REAL_ENV_REQUIRED",
+  "identity": "ONE_PERSISTED_MOBILE_DEVICE_ID_FOR_MUTATIONS_AND_P2P",
+  "model_family": "Qwen2.5-0.5B-Instruct",
+  "mobile_model_artifact": "GGUF_Q4_K_M",
+  "mobile_model_runtime": "ADAPTER_READY_RUNTIME_NOT_SELECTED_LICENSE_GATE",
+  "integration_start": "integration/00_INTEGRATION_START_HERE.md",
+  "implementation_status": "docs/V9_5_IMPLEMENTATION_STATUS.md",
+  "remaining_integration": "integration/10_WEB_PARITY_STATUS_AND_WHATS_LEFT.md",
+  "truth_boundary": [
+    "No JavaScript, WebView or WASM runtime is required for mobile mining.",
+    "No libasif_reader.so is required.",
+    "libcontextvault.so must be built with Android NDK and verified before real-device native acceptance.",
+    "A real local Qwen runtime is not claimed until a licensed llama.cpp-compatible integration is selected and tested.",
+    "P2P production parity is not claimed until signaling/STUN/TURN and the web-mobile golden flow are proven."
+  ]
+}

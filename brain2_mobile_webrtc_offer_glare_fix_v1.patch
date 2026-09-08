@@ -1,0 +1,52 @@
+diff --git a/lib/sync/p2p_sync.dart b/lib/sync/p2p_sync.dart
+index be3df07..2e3d512 100644
+--- a/lib/sync/p2p_sync.dart
++++ b/lib/sync/p2p_sync.dart
+@@ -286,10 +286,25 @@ class Brain2P2PSync {
+       final from = '${signal['fromDeviceId']}';
+       final kind = '${signal['kind']}';
+       final payload = (signal['payload'] as Map?)?.cast<String, dynamic>();
+-      final pc = await _pc(from);
+ 
+       if (kind == 'offer') {
+         if (payload == null) throw StateError('Offer signal has no payload.');
++
++        // In the QR golden flow the joining mobile is the deterministic
++        // initiator. If a web-side manual Connect created a simultaneous offer,
++        // do not apply it to the mobile initiator RTCPeerConnection: flutter_webrtc
++        // can reject the subsequent SDP with an m-line ordering error. The web
++        // peer will consume our mobile offer and answer it.
++        if (_pcs.containsKey(from)) {
++          _status(
++            Brain2P2PStage.signaling,
++            'Ignoring simultaneous web offer; waiting for the answer to the mobile offer…',
++            peer: from,
++          );
++          continue;
++        }
++
++        final pc = await _pc(from);
+         _status(
+           Brain2P2PStage.signaling,
+           'WebRTC offer received. Sending answer…',
+@@ -311,6 +326,10 @@ class Brain2P2PSync {
+         );
+       } else if (kind == 'answer') {
+         if (payload == null) throw StateError('Answer signal has no payload.');
++        final pc = _pcs[from];
++        // A consumed mailbox can still contain an answer from a superseded
++        // attempt. Without a live local offer there is nothing to answer.
++        if (pc == null) continue;
+         await _setRemoteDescription(
+           from,
+           pc,
+@@ -330,7 +349,8 @@ class Brain2P2PSync {
+           ),
+         );
+       } else if (kind == 'bye') {
+-        await pc.close();
++        final pc = _pcs[from];
++        if (pc != null) await pc.close();
+         _pcs.remove(from);
+         _channels.remove(from);
+         _pendingIce.remove(from);

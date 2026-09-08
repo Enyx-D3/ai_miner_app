@@ -1,0 +1,25 @@
+{
+  "brain2": {
+    "schema": 10,
+    "lockedArchitecture": "B2_LOCKED_ARCHITECTURE_V1"
+  },
+  "contextVault": {
+    "androidLibrary": "libcontextvault.so",
+    "requiredAbi": "arm64-v8a"
+  },
+  "model": {
+    "family": "Qwen2.5-0.5B-Instruct",
+    "mobileFormat": "GGUF",
+    "repository": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+    "quantization": "Q4_K_M",
+    "contextSize": 4096,
+    "runtime": "UNSELECTED_LLAMA_CPP_ADAPTER"
+  },
+  "p2p": {
+    "signalingBaseUrl": "https://YOUR_BRAIN2_WEB_HOST",
+    "iceServers": [
+      {"urls": ["stun:YOUR_STUN_SERVER"]},
+      {"urls": ["turn:YOUR_TURN_SERVER"], "username": "TURN_USER", "credential": "TURN_CREDENTIAL"}
+    ]
+  }
+}

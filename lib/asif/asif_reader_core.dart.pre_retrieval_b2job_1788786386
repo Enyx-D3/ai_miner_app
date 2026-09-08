@@ -1,0 +1,255 @@
+import 'dart:convert';
+
+import '../core/contracts.dart';
+import '../core/identity.dart';
+import '../storage/brain2_database.dart';
+
+enum AsifEvidenceBudget { tiny, balanced, deep }
+
+class AsifReaderQueryPlan {
+  final String owner;
+  final String retrievalOwner;
+  final String route;
+  final String? fallback;
+  final AsifEvidenceBudget budget;
+  final int termCap;
+  final int candidateCap;
+  final int resultCap;
+  final String reason;
+
+  const AsifReaderQueryPlan({
+    required this.owner,
+    required this.retrievalOwner,
+    required this.route,
+    required this.fallback,
+    required this.budget,
+    required this.termCap,
+    required this.candidateCap,
+    required this.resultCap,
+    required this.reason,
+  });
+
+  String get budgetName => switch (budget) {
+        AsifEvidenceBudget.tiny => 'TINY',
+        AsifEvidenceBudget.balanced => 'BALANCED',
+        AsifEvidenceBudget.deep => 'DEEP',
+      };
+}
+
+class ReaderEvidence {
+  final String id;
+  final String table;
+  final String recordId;
+  final int score;
+  final String recordHash;
+  final Map<String, Object?> record;
+
+  const ReaderEvidence(
+      {required this.id,
+      required this.table,
+      required this.recordId,
+      required this.score,
+      required this.recordHash,
+      required this.record});
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'table': table,
+        'recordId': recordId,
+        'score': score,
+        'recordHash': recordHash,
+        'record': record
+      };
+}
+
+class ReaderDatabox {
+  final String id;
+  final String query;
+  final String route;
+  final String createdAt;
+  final List<ReaderEvidence> evidence;
+  final String manifestHash;
+  final AsifReaderQueryPlan plan;
+
+  const ReaderDatabox(
+      {required this.id,
+      required this.query,
+      required this.route,
+      required this.createdAt,
+      required this.evidence,
+      required this.manifestHash,
+      required this.plan});
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'type': 'B2DATABOX',
+        'reader': brain2RetrievalVersion,
+        'readerCore': asifReaderCoreVersion,
+        'query': query,
+        'route': route,
+        'budget': plan.budgetName,
+        'candidateCap': plan.candidateCap,
+        'resultCap': plan.resultCap,
+        'createdAt': createdAt,
+        'evidence': evidence.map((e) => e.toJson()).toList(),
+        'manifestHash': manifestHash,
+      };
+}
+
+/// Pure-Dart port of the V9 browser Reader/RapidRetrieve ownership model.
+///
+/// This replaces the historical native Reader dependency for the current
+/// product runtime. Durable Brain2 state remains in SQLite; reader_search_docs
+/// is a derived/rebuildable projection. Only selected records are hydrated.
+class AsifReaderCore {
+  final Brain2Database db;
+  const AsifReaderCore(this.db);
+
+  String get owner => 'ASIF_READER';
+  String get retrievalOwner => 'RAPIDRETRIEVE';
+  String get coreVersion => asifReaderCoreVersion;
+
+  Future<void> ensureReady() => db.ensureReaderIndex();
+
+  AsifReaderQueryPlan planQuery(String query, {int limit = 256}) {
+    final q = normalizeText(query).toLowerCase();
+    final temporal =
+        RegExp(r'\b(current|latest|now|decision|truth|status)\b').hasMatch(q);
+    final history =
+        RegExp(r'\b(compare|difference|changed|before|after|history)\b')
+            .hasMatch(q);
+    final route = temporal
+        ? 'F_TEMPORAL_TRUTH'
+        : history
+            ? 'G_HISTORY_COMPARE'
+            : 'B_SELECTIVE_EVIDENCE';
+    final resultCap = limit.clamp(1, 256).toInt();
+    final baseCandidate = temporal
+        ? 192
+        : history
+            ? 320
+            : 256;
+    final candidateCap = baseCandidate.clamp(resultCap, 512).toInt();
+    final budget = resultCap <= 32 && candidateCap <= 192
+        ? AsifEvidenceBudget.tiny
+        : resultCap <= 96 && candidateCap <= 320
+            ? AsifEvidenceBudget.balanced
+            : AsifEvidenceBudget.deep;
+    return AsifReaderQueryPlan(
+      owner: 'ASIF_READER',
+      retrievalOwner: 'RAPIDRETRIEVE',
+      route: route,
+      fallback: route == 'B_SELECTIVE_EVIDENCE'
+          ? 'F_TEMPORAL_TRUTH'
+          : 'B_SELECTIVE_EVIDENCE',
+      budget: budget,
+      termCap: temporal ? 14 : 12,
+      candidateCap: candidateCap,
+      resultCap: resultCap,
+      reason: temporal
+          ? 'Temporal/current-truth language detected.'
+          : history
+              ? 'History/comparison language detected.'
+              : 'Selective evidence retrieval.',
+    );
+  }
+
+  List<String> _terms(String query, int cap) => normalizeText(query)
+      .toLowerCase()
+      .split(RegExp(r'[^\p{L}\p{N}_-]+', unicode: true))
+      .where((t) => t.length >= 2)
+      .toSet()
+      .take(cap)
+      .toList(growable: false);
+
+  Future<List<ReaderEvidence>> query(String query,
+      {int candidateLimit = 256,
+      int evidenceLimit = 24,
+      Set<String>? tables}) async {
+    await ensureReady();
+    final plan = planQuery(query, limit: evidenceLimit);
+    final terms = _terms(query, plan.termCap);
+    final effectiveCandidate =
+        candidateLimit < plan.candidateCap ? candidateLimit : plan.candidateCap;
+    final candidates = terms.isEmpty
+        ? await db.readerRecent(limit: effectiveCandidate, tables: tables)
+        : await db.readerCandidates(terms,
+            limit: effectiveCandidate, tables: tables);
+    final out = <ReaderEvidence>[];
+    final q = normalizeText(query).toLowerCase();
+    for (final c in candidates) {
+      if (out.length >= plan.resultCap) break;
+      final table = '${c['table_name']}';
+      final recordId = '${c['record_id']}';
+      final record = await db.getRecord(table, recordId);
+      if (record == null) continue;
+      final expected = '${c['record_hash']}';
+      final actual = hashEntity(record);
+      if (expected.isEmpty || actual != expected) continue;
+      var score = c['score'] is int
+          ? c['score'] as int
+          : int.tryParse('${c['score']}') ?? 0;
+      final searchable = normalizeText([
+        record['title'],
+        record['name'],
+        record['text'],
+        record['content'],
+        record['value'],
+        record['subject'],
+        record['summary'],
+        record['description'],
+        record['status']
+      ].where((x) => x != null).join(' '))
+          .toLowerCase();
+      if (q.isNotEmpty && searchable.contains(q)) score += 4;
+      if (table == 'truths' && '${record['status']}' == 'CURRENT') score += 3;
+      out.add(ReaderEvidence(
+          id: canonicalId('ev', [table, recordId, actual]),
+          table: table,
+          recordId: recordId,
+          score: score,
+          recordHash: actual,
+          record: record));
+    }
+    out.sort((a, b) {
+      final s = b.score.compareTo(a.score);
+      if (s != 0) return s;
+      return a.recordId.compareTo(b.recordId);
+    });
+    return out.take(plan.resultCap).toList(growable: false);
+  }
+
+  Future<ReaderDatabox> buildDatabox(String query,
+      {int evidenceLimit = 24, Set<String>? tables}) async {
+    final plan = planQuery(query, limit: evidenceLimit);
+    final evidence =
+        await this.query(query, evidenceLimit: evidenceLimit, tables: tables);
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final membership = evidence
+        .map((e) => '${e.table}:${e.recordId}:${e.recordHash}')
+        .toList(growable: false);
+    final manifestHash = sha256Hex(canonicalJson(membership));
+    return ReaderDatabox(
+        id: canonicalId('databox', [
+          await db.memoryRoot(),
+          normalizeText(query),
+          plan.route,
+          manifestHash
+        ]),
+        query: normalizeText(query),
+        route: plan.route,
+        createdAt: createdAt,
+        evidence: evidence,
+        manifestHash: manifestHash,
+        plan: plan);
+  }
+
+  bool verifyDatabox(ReaderDatabox box) {
+    final membership = box.evidence
+        .map((e) => '${e.table}:${e.recordId}:${e.recordHash}')
+        .toList(growable: false);
+    return sha256Hex(canonicalJson(membership)) == box.manifestHash;
+  }
+
+  String encodeDatabox(ReaderDatabox box) => jsonEncode(box.toJson());
+}

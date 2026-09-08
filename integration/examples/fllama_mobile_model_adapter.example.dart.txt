@@ -1,0 +1,49 @@
+// OPTIONAL EXAMPLE ONLY — do not copy into lib/ until fllama licensing is approved
+// and a reviewed/pinned fllama revision has passed release-device tests.
+//
+// The active Telosnex fllama API exposes OpenAiRequest / Message / fllamaChat.
+// Wrap its callback completion into Brain2's MobileModelAdapter contract.
+
+/*
+import 'dart:async';
+import 'package:fllama/fllama.dart';
+import '../../lib/mrs/mobile_model_adapter.dart';
+
+class FllamaQwenAdapter implements MobileModelAdapter {
+  final String modelPath;
+  FllamaQwenAdapter(this.modelPath);
+
+  @override String get runtimeName => 'FLLAMA_LLAMA_CPP';
+  @override String get modelName => 'Qwen2.5-0.5B-Instruct-Q4_K_M';
+
+  @override
+  Future<bool> isAvailable() async => File(modelPath).exists();
+
+  @override
+  Future<String> generate({
+    required String systemPrompt,
+    required String userPrompt,
+    int maxNewTokens = 256,
+  }) {
+    final completer=Completer<String>();
+    final request=OpenAiRequest(
+      modelPath:modelPath,
+      maxTokens:maxNewTokens,
+      contextSize:4096,
+      temperature:0.1,
+      presencePenalty:1.1,
+      topP:1.0,
+      messages:[
+        Message(Role.system,systemPrompt),
+        Message(Role.user,userPrompt),
+      ],
+    );
+    String latest='';
+    fllamaChat(request,(response,done){
+      latest=response;
+      if(done&&!completer.isCompleted)completer.complete(latest);
+    });
+    return completer.future.timeout(const Duration(seconds:120));
+  }
+}
+*/

@@ -1,0 +1,48 @@
+import '../core/identity.dart';
+
+class ProjectResolution {
+  final String projectId;
+  final String name;
+  final String slug;
+  final List<String> aliases;
+  final double confidence;
+  const ProjectResolution(
+      {required this.projectId,
+      required this.name,
+      required this.slug,
+      required this.aliases,
+      required this.confidence});
+}
+
+ProjectResolution resolveProject(
+    {required String title, required List<Map<String, Object?>> messages}) {
+  final clean =
+      normalizeText(title).isEmpty ? 'Untitled' : normalizeText(title);
+  final firstUser = messages
+      .where((m) => '${m['role']}' == 'user')
+      .take(3)
+      .map((m) => normalizeText('${m['text'] ?? ''}'))
+      .join(' ');
+  final fingerprint = _terms('$clean $firstUser').take(16).toList()..sort();
+  final key = fingerprint.isEmpty ? clean.toLowerCase() : fingerprint.join('|');
+  final id = canonicalId('proj', ['brain2-project', key]);
+  return ProjectResolution(
+      projectId: id,
+      name: clean,
+      slug: _slug(clean),
+      aliases: [clean],
+      confidence: fingerprint.length >= 4 ? 0.82 : 0.62);
+}
+
+Iterable<String> _terms(String s) => normalizeText(s)
+    .toLowerCase()
+    .split(RegExp(r'[^a-z0-9]+'))
+    .where((x) => x.length >= 4)
+    .toSet();
+String _slug(String s) {
+  final x = normalizeText(s)
+      .toLowerCase()
+      .replaceAll(RegExp('[^a-z0-9]+'), '-')
+      .replaceAll(RegExp('^-+|-+\$'), '');
+  return x.isEmpty ? 'untitled' : x.substring(0, x.length > 72 ? 72 : x.length);
+}

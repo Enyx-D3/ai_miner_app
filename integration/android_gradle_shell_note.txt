@@ -1,0 +1,7 @@
+This ZIP intentionally does not pin guessed Android Gradle/Kotlin plugin versions.
+If the Android Gradle shell is absent/incomplete, regenerate it with the installed Flutter SDK:
+
+  flutter create . --platforms=android --org com.brain2 --project-name brain2_ai_miner_mobile
+
+Then preserve the Brain2-owned AndroidManifest, MainActivity, jniLibs, lib/, native/, integration/, scripts/ and pubspec.yaml from this release.
+See 07_ANDROID_FLUTTER_BUILD_INTEGRATION.md.
