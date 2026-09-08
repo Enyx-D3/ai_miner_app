@@ -43,6 +43,30 @@ const Set<String> brain2SharedWireTables = {
   'notebookSnapshots',
 };
 
+const Set<String> brain2WebMergeWireTables = {
+  'sources',
+  'conversations',
+  'messages',
+  'atoms',
+  'truths',
+  'projects',
+  'ticks',
+  'decisions',
+  'patterns',
+  'experiments',
+  'missions',
+  'checkpoints',
+  'verifications',
+  'transactions',
+  'patternTests',
+  'portableExpertise',
+  'compiledCapabilities',
+  'reasoningTrajectories',
+  'failureMemories',
+  'databoxes',
+  'evidenceBlocks',
+};
+
 String brain2WireTableForLocal(String localTable) =>
     brain2LocalToWireTable[localTable] ?? localTable;
 

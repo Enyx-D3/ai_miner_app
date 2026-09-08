@@ -978,9 +978,18 @@ class Brain2Database {
   }
 
   Future<void> finalizeMemoryMerge() async {
-    await setMeta(
-      'reader_index_state',
-      (await total('messages')) == 0 ? 'EMPTY' : 'READY',
-    );
+    final readerState = (await total('messages')) == 0 ? 'EMPTY' : 'READY';
+    await db.transaction((txn) async {
+      await txn.insert(
+        'meta',
+        {'key': 'reader_index_state', 'value': readerState},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.insert(
+        'meta',
+        {'key': 'merge_parent_roots', 'value': ''},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
   }
 }

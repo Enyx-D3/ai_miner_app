@@ -244,6 +244,7 @@ class Brain2P2PSync {
         _scheduleHello(peer);
       } else if (state == RTCDataChannelState.RTCDataChannelClosed) {
         _channels.remove(peer);
+        if (_memoryConflicts.containsKey(peer)) _merging = false;
         _status(
           Brain2P2PStage.disconnected,
           'Peer disconnected. Missing deltas will resume after reconnect.',
@@ -720,6 +721,14 @@ class Brain2P2PSync {
           );
           break;
         }
+        if (_memoryConflicts.containsKey(peer) && !_merging) {
+          _status(
+            Brain2P2PStage.memoryConflict,
+            'An interrupted Brain2 merge is waiting to resume. Merge both memories again to continue safely.',
+            peer: peer,
+          );
+          break;
+        }
         _memoryConflicts.remove(peer);
         final localMessages = await db.total('messages');
         final remoteMessages = remote['totalMessages'] is num
@@ -1143,6 +1152,8 @@ class Brain2P2PSync {
     var ordinal = 0;
     for (final localTable in Brain2Database.mergeSnapshotTables) {
       final wireTable = brain2WireTableForLocal(localTable);
+      if (!brain2WebMergeWireTables.contains(wireTable)) continue;
+
       var offset = 0;
       while (true) {
         final page = await db.bootstrapRecordsPage(
@@ -1152,15 +1163,43 @@ class Brain2P2PSync {
         );
         if (page.isEmpty) break;
         offset += page.length;
-        final recordsJson = jsonEncode(page);
-        await _send(peer, {
-          'type': 'merge_return_chunk',
-          'targetRoot': targetRoot,
-          'table': wireTable,
-          'ordinal': ordinal++,
-          'recordsJson': recordsJson,
-          'chunkHash': sha256Hex(recordsJson),
-        });
+
+        var chunk = <Map<String, Object?>>[];
+        var bytes = 2;
+
+        Future<void> flush() async {
+          if (chunk.isEmpty) return;
+          final current = List<Map<String, Object?>>.from(chunk);
+          final recordsJson = jsonEncode(current);
+          await _send(peer, {
+            'type': 'merge_return_chunk',
+            'targetRoot': targetRoot,
+            'table': wireTable,
+            'ordinal': ordinal++,
+            'recordsJson': recordsJson,
+            'chunkHash': sha256Hex(recordsJson),
+          });
+          chunk = <Map<String, Object?>>[];
+          bytes = 2;
+          _status(
+            Brain2P2PStage.bootstrapping,
+            'Returning merged Brain2 data · $wireTable',
+            peer: peer,
+            processed: ordinal,
+          );
+        }
+
+        for (final record in page) {
+          final size = utf8.encode(canonicalJson(record)).length + 1;
+          if (chunk.isNotEmpty &&
+              bytes + size > brain2SyncBootstrapChunkBytes) {
+            await flush();
+          }
+          chunk.add(record);
+          bytes += size;
+        }
+        await flush();
+
         if (page.length < 128) break;
         await Future<void>.delayed(Duration.zero);
       }

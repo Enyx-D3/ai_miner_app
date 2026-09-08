@@ -248,6 +248,13 @@ class Brain2MobilePairing {
         await prefs.setString(_rootKey, newRoot);
       },
     );
+    final pendingMergeParents = (await db.meta('merge_parent_roots')).trim();
+    if (pendingMergeParents.isNotEmpty) {
+      peerSync.rememberMemoryConflict(
+        peer,
+        storedRoot.isNotEmpty ? storedRoot : await db.memoryRoot(),
+      );
+    }
     await peerSync.start();
     await peerSync.connect(peer);
     sync = peerSync;
