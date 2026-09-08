@@ -8,6 +8,8 @@ import '../contextvault/contextvault_service.dart';
 import '../core/identity.dart';
 import '../intelligence/mobile_intelligence_pipeline.dart';
 import '../mrs/brain2_mrs_runtime.dart';
+import '../mrs/llama_mobile_model_adapter.dart';
+import '../mrs/mobile_model_manager.dart';
 import '../services/b2m_mobile_service.dart';
 import '../services/import_service.dart';
 import '../storage/brain2_database.dart';
@@ -24,6 +26,8 @@ class Brain2Controller extends ChangeNotifier {
   late MobileIntelligencePipeline intelligence;
   late B2MMobileService b2m;
   late Brain2MrsRuntime mrs;
+  MobileModelManager? mobileModelManager;
+  LlamaMobileModelAdapter? mobileModelAdapter;
   late Brain2MobilePairing pairing;
   Brain2P2PSync? p2p;
   StreamSubscription<MutationCommittedEvent>? _databaseMutationSubscription;
@@ -69,7 +73,14 @@ class Brain2Controller extends ChangeNotifier {
         intelligence: intelligence,
       );
       b2m = B2MMobileService(db);
-      mrs = Brain2MrsRuntime(db, mutations);
+      await mobileModelAdapter?.dispose();
+      mobileModelManager ??= MobileModelManager();
+      mobileModelAdapter = LlamaMobileModelAdapter(mobileModelManager!);
+      mrs = Brain2MrsRuntime(
+        db,
+        mutations,
+        model: mobileModelAdapter,
+      );
       pairing = Brain2MobilePairing(
         db,
         deviceId,
