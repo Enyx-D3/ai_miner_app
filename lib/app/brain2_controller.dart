@@ -215,6 +215,21 @@ class Brain2Controller extends ChangeNotifier {
     };
   }
 
+  bool get hasP2PMemoryConflict =>
+      p2p?.hasMemoryConflict == true ||
+      p2pStatus.stage == Brain2P2PStage.memoryConflict;
+
+  Future<void> reconnectP2P() async {
+    final sync = p2p;
+    final peer = p2pStatus.peerDeviceId;
+    if (sync == null || peer == null || peer.isEmpty) {
+      throw StateError('No paired Brain2 peer is available to reconnect.');
+    }
+    await sync.start();
+    await sync.connect(peer);
+    notifyListeners();
+  }
+
   Future<void> mergeBothMemories() async {
     final sync = p2p;
     if (sync == null) {

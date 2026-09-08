@@ -170,9 +170,10 @@ class Brain2MobilePairing {
 
     final localMessages = await db.total('messages');
     final localRoot = await db.memoryRoot();
+    final differentMemory = localMessages > 0 && localRoot != root;
     if (localMessages == 0) {
       await db.setMeta('memory_root', root);
-    } else if (localRoot != root) {
+    } else if (differentMemory) {
       _status(
         Brain2P2PStage.memoryConflict,
         'Different Brain2 memories detected. Choose Merge both memories to preserve both replicas.',
@@ -202,6 +203,9 @@ class Brain2MobilePairing {
         await prefs.setString(_rootKey, newRoot);
       },
     );
+    if (differentMemory) {
+      peerSync.rememberMemoryConflict(invite.inviterDeviceId, root);
+    }
     await peerSync.start();
     await peerSync.connect(invite.inviterDeviceId);
     sync = peerSync;

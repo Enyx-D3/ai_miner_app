@@ -115,6 +115,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
   @override
   Widget build(BuildContext context) {
     final status = widget.c.p2pStatus;
+    final hasConflict = widget.c.hasP2PMemoryConflict;
     final paired = widget.c.p2p != null ||
         status.stage == Brain2P2PStage.synced ||
         status.stage == Brain2P2PStage.syncingDeltas ||
@@ -200,7 +201,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                if (status.stage == Brain2P2PStage.memoryConflict) ...[
+                if (hasConflict) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -212,6 +213,27 @@ class _DevicesScreenState extends State<DevicesScreen> {
                       'Both devices contain Brain2 data. Merge preserves both datasets, deduplicates canonical IDs, and rebuilds root-bound intelligence on the shared pairing root.',
                       style: TextStyle(color: Color(0xffc7b7ef), height: 1.4),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            setState(() => busy = true);
+                            try {
+                              await widget.c.reconnectP2P();
+                            } catch (error) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('Reconnect failed: $error')),
+                              );
+                            } finally {
+                              if (mounted) setState(() => busy = false);
+                            }
+                          },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reconnect peer'),
                   ),
                   const SizedBox(height: 10),
                   FilledButton.icon(
@@ -235,6 +257,30 @@ class _DevicesScreenState extends State<DevicesScreen> {
                     label: const Text('Merge both memories'),
                   ),
                   const SizedBox(height: 10),
+                ],
+
+                if (status.stage == Brain2P2PStage.disconnected && !hasConflict) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            setState(() => busy = true);
+                            try {
+                              await widget.c.reconnectP2P();
+                            } catch (error) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('Reconnect failed: $error')),
+                              );
+                            } finally {
+                              if (mounted) setState(() => busy = false);
+                            }
+                          },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reconnect peer'),
+                  ),
                 ],
 
                 const SizedBox(height: 10),

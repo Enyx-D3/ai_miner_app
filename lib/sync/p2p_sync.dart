@@ -120,10 +120,21 @@ class Brain2P2PSync {
     String? peer,
     int? processed,
   }) {
+    final preserveConflict = _memoryConflicts.isNotEmpty &&
+        !_merging &&
+        stage != Brain2P2PStage.memoryConflict &&
+        (stage == Brain2P2PStage.signaling ||
+            stage == Brain2P2PStage.webRtcConnected ||
+            stage == Brain2P2PStage.verifyingMemory ||
+            stage == Brain2P2PStage.disconnected);
+
     onStatus?.call(
       Brain2P2PStatus(
-        stage,
-        message,
+        preserveConflict ? Brain2P2PStage.memoryConflict : stage,
+        preserveConflict
+            ? 'Different Brain2 memories are still waiting to merge. '
+                'Transport update: $message'
+            : message,
         peerDeviceId: peer,
         processed: processed,
       ),
@@ -324,6 +335,16 @@ class Brain2P2PSync {
   }
 
   bool get hasMemoryConflict => _memoryConflicts.isNotEmpty;
+
+  void rememberMemoryConflict(String peer, String remoteRoot) {
+    if (peer.isEmpty || remoteRoot.isEmpty) return;
+    _memoryConflicts[peer] = {'memoryRoot': remoteRoot};
+    _status(
+      Brain2P2PStage.memoryConflict,
+      'Different Brain2 memories detected. Merge both memories to preserve data from both replicas.',
+      peer: peer,
+    );
+  }
 
   Future<void> mergeBothMemories() async {
     if (_memoryConflicts.isEmpty) {
