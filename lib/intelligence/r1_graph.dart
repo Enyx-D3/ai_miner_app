@@ -40,7 +40,7 @@ R1VerificationState _verification(Object? status) {
   }
 }
 String _atomKind(Object? kind) { final k='$kind'; if(k=='decision')return 'DECISION'; if(k=='constraint')return 'CONSTRAINT'; if(k=='task')return 'TASK'; if(k=='question')return 'OPEN_QUESTION'; return 'ATOM'; }
-List<String> _unique(Iterable<Object?> values)=>(values.map((e)=>'$e').where((e)=>e.isNotEmpty).toSet().toList()..sort());
+List<String> _unique(Iterable<Object?> values)=>(values.where((e)=>e!=null).map((e)=>'$e').where((e)=>e.isNotEmpty).toSet().toList()..sort());
 R1GraphEdge _edge(String from,String to,String type)=>R1GraphEdge(id:canonicalId('r1e',[brain2R1GraphVersion,from,type,to]),from:from,to:to,type:type);
 
 R1Graph projectR1Graph({required List<Map<String,Object?>> atoms, required List<Map<String,Object?>> truths, List<Map<String,Object?>> releaseGates=const []}) {
