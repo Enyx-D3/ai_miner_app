@@ -9,6 +9,18 @@ import '../core/identity.dart';
 import '../models/mutation.dart';
 import '../sync/sync_contract.dart';
 
+bool brain2SqliteQuickCheckOk(List<Map<String, Object?>> rows) {
+  if (rows.isEmpty) return false;
+  return rows.every(
+    (row) => row.values.any(
+      (value) => '$value'.trim().toLowerCase() == 'ok',
+    ),
+  );
+}
+
+String brain2RestartReaderIndexState(String state) =>
+    state == 'BUILDING' ? 'UNKNOWN' : state;
+
 class MutationCommittedEvent {
   final MutationRecord mutation;
   final bool remote;
@@ -69,6 +81,20 @@ class Brain2Database {
         if (oldVersion < 11) await _createLockedArchitectureTables(d);
       },
     );
+    await _verifyDatabaseIntegrity();
+
+    final readerState = await meta('reader_index_state');
+    final recoveredReaderState = brain2RestartReaderIndexState(readerState);
+    if (recoveredReaderState != readerState) {
+      await setMeta('reader_index_state', recoveredReaderState);
+    }
+
+    try {
+      await db.rawQuery('PRAGMA wal_checkpoint(PASSIVE)');
+    } catch (_) {
+      // SQLite WAL recovery remains authoritative if this pragma is rejected.
+    }
+
     await _ensureMeta('schema_version', '$brain2SchemaVersion');
     await _ensureMeta('storage_migration', '11');
     await _ensureMeta('memory_root',
@@ -76,6 +102,22 @@ class Brain2Database {
     await _ensureMeta('origin_sequence', '0');
     await _ensureMeta('reader_index_state', 'UNKNOWN');
     await _createJsonLookupIndexes();
+  }
+
+  Future<void> _verifyDatabaseIntegrity() async {
+    final rows = await db.rawQuery('PRAGMA quick_check(1)');
+    if (brain2SqliteQuickCheckOk(rows)) return;
+
+    final detail = rows
+        .expand((row) => row.values)
+        .map((value) => '$value')
+        .join('; ');
+    await _db?.close();
+    _db = null;
+    throw StateError(
+      'Brain2 SQLite integrity check failed. '
+      'The database was left untouched for recovery. Detail: $detail',
+    );
   }
 
   Future<void> _createJsonLookupIndexes() async {
