@@ -59,7 +59,21 @@ class Brain2MobilePairing {
   }
 
   Brain2PairingInvite parse(String raw) {
-    final uri = Uri.parse(raw.trim());
+    final value = raw.trim();
+    if (value.startsWith('{')) {
+      if (value.contains('"B2_G11_SYNC_PROOF"') ||
+          value.contains('"format": "B2_G11_SYNC_PROOF"')) {
+        throw const FormatException(
+          'Clipboard contains a G11 sync proof, not a pairing link. '
+          'On Web Devices & Sync, create a fresh QR and use Copy link.',
+        );
+      }
+      throw const FormatException(
+        'Brain2 pairing input is JSON, not a pairing URL. '
+        'Copy the http/https link from the Web QR card.',
+      );
+    }
+    final uri = Uri.parse(value);
     if (uri.scheme != 'http' && uri.scheme != 'https') {
       throw const FormatException(
           'Brain2 pairing QR must contain an http/https URL.');

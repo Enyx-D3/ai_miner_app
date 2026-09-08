@@ -34,4 +34,17 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+  test('G11 sync proof JSON is rejected with pairing-link guidance', () {
+    expect(
+      () => pairing.parse(
+        '{"format":"B2_G11_SYNC_PROOF","version":1,"surface":"MOBILE"}',
+      ),
+      throwsA(isA<FormatException>().having(
+        (error) => error.message,
+        'message',
+        contains('Copy link'),
+      )),
+    );
+  });
+
 }
