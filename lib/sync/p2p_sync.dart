@@ -11,9 +11,10 @@ import '../storage/brain2_database.dart';
 import 'g11_sync_proof.dart';
 import 'network_client.dart';
 import 'sync_contract.dart';
+import 'sync_safety.dart';
 
-const int _brain2TransportFramePayloadBytes = 8 * 1024;
-const int _brain2TransportMaxReassembledBytes = 64 * 1024 * 1024;
+const int _brain2TransportFramePayloadBytes = brain2SyncFramePayloadMaxBytes;
+const int _brain2TransportMaxReassembledBytes = brain2SyncReassembledMaxBytes;
 
 bool brain2ShouldDispatchHello({
   required bool channelPresent,
@@ -49,9 +50,11 @@ class _Brain2FrameAssembly {
   final List<Uint8List?> parts;
   int received = 0;
   int bytes = 0;
+  int updatedAtMs;
 
   _Brain2FrameAssembly(this.total)
-      : parts = List<Uint8List?>.filled(total, null);
+      : updatedAtMs = DateTime.now().millisecondsSinceEpoch,
+        parts = List<Uint8List?>.filled(total, null);
 }
 
 enum Brain2P2PStage {
@@ -100,9 +103,15 @@ class Brain2P2PSync {
   final Set<String> _awaitingRemoteAnswer = {};
   final Set<String> _flushScheduled = {};
   final Set<String> _awaitingAck = {};
+  final Map<String, String> _outboundManifestHash = {};
+  final Map<String, int> _outboundToSequence = {};
   final Map<String, int> _bootstrapPeerMaxSequence = {};
+  final Map<String, int> _bootstrapExpectedOrdinal = {};
   final Map<String, Map<String, Object?>> _memoryConflicts = {};
   bool _merging = false;
+  String _mergePhase = 'IDLE';
+  int _mergeSeedOrdinal = 0;
+  final Brain2ReplayWindow _signalReplay = Brain2ReplayWindow();
   final Map<String, _Brain2FrameAssembly> _incomingFrames = {};
   final Map<String, Future<void>> _incomingWork = {};
   int _frameCounter = 0;
@@ -199,6 +208,13 @@ class Brain2P2PSync {
     _pendingIce.clear();
     _remoteDescriptionReady.clear();
     _awaitingRemoteAnswer.clear();
+    _awaitingAck.clear();
+    _outboundManifestHash.clear();
+    _outboundToSequence.clear();
+    _bootstrapExpectedOrdinal.clear();
+    _incomingFrames.clear();
+    _incomingWork.clear();
+    _signalReplay.clear();
     api.close();
   }
 
@@ -244,7 +260,16 @@ class Brain2P2PSync {
         _scheduleHello(peer);
       } else if (state == RTCDataChannelState.RTCDataChannelClosed) {
         _channels.remove(peer);
-        if (_memoryConflicts.containsKey(peer)) _merging = false;
+        _awaitingAck.remove(peer);
+        _outboundManifestHash.remove(peer);
+        _outboundToSequence.remove(peer);
+        _bootstrapExpectedOrdinal.remove(peer);
+        _clearTransportFrames(peer);
+        if (_memoryConflicts.containsKey(peer)) {
+          _merging = false;
+          _mergePhase = 'IDLE';
+          _mergeSeedOrdinal = 0;
+        }
         _status(
           Brain2P2PStage.disconnected,
           'Peer disconnected. Missing deltas will resume after reconnect.',
@@ -274,6 +299,7 @@ class Brain2P2PSync {
 
   Future<void> _handleIncomingText(String peer, String text) async {
     try {
+      brain2AssertPhysicalMessageSize(text);
       final decoded = jsonDecode(text);
       if (decoded is! Map) {
         throw const FormatException('Brain2 P2P message is not an object.');
@@ -290,46 +316,103 @@ class Brain2P2PSync {
         'P2P message rejected: $error',
         peer: peer,
       );
+      _awaitingAck.remove(peer);
+      _outboundManifestHash.remove(peer);
+      _outboundToSequence.remove(peer);
+      _bootstrapExpectedOrdinal.remove(peer);
+      _clearTransportFrames(peer);
+      _merging = false;
+      _mergePhase = 'IDLE';
+      _mergeSeedOrdinal = 0;
+      final channel = _channels.remove(peer);
+      if (channel != null) await channel.close();
+      final pc = _pcs.remove(peer);
+      if (pc != null) await pc.close();
     }
+  }
+
+  void _clearTransportFrames(String peer) {
+    final prefix = '$peer::';
+    final keys = _incomingFrames.keys
+        .where((key) => key.startsWith(prefix))
+        .toList(growable: false);
+    for (final key in keys) {
+      _incomingFrames.remove(key);
+    }
+  }
+
+  void _pruneTransportFrames(String peer) {
+    final cutoff =
+        DateTime.now().millisecondsSinceEpoch - brain2SyncFrameTtlMs;
+    final prefix = '$peer::';
+    final expired = _incomingFrames.entries
+        .where(
+          (entry) =>
+              entry.key.startsWith(prefix) &&
+              entry.value.updatedAtMs < cutoff,
+        )
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    for (final key in expired) {
+      _incomingFrames.remove(key);
+    }
+  }
+
+  int _incomingFrameBytesForPeer(String peer) {
+    final prefix = '$peer::';
+    var total = 0;
+    for (final entry in _incomingFrames.entries) {
+      if (entry.key.startsWith(prefix)) total += entry.value.bytes;
+    }
+    return total;
+  }
+
+  int _incomingFrameAssembliesForPeer(String peer) {
+    final prefix = '$peer::';
+    return _incomingFrames.keys.where((key) => key.startsWith(prefix)).length;
   }
 
   Future<void> _acceptTransportFrame(
     String peer,
     Map<String, Object?> frame,
   ) async {
-    final id = '${frame['id'] ?? ''}';
-    final index = frame['index'] is num
-        ? (frame['index'] as num).toInt()
-        : int.tryParse('${frame['index']}') ?? -1;
-    final total = frame['total'] is num
-        ? (frame['total'] as num).toInt()
-        : int.tryParse('${frame['total']}') ?? -1;
-    if (id.isEmpty ||
-        total < 1 ||
-        total > 16384 ||
-        index < 0 ||
-        index >= total) {
-      throw StateError('Invalid Brain2 transport frame');
-    }
+    brain2AssertFrameMetadata(frame);
+    _pruneTransportFrames(peer);
+
+    final id = frame['id'] as String;
+    final rawIndex = frame['index'];
+    final rawTotal = frame['total'];
+    final index = rawIndex is num ? rawIndex.toInt() : int.parse('$rawIndex');
+    final total = rawTotal is num ? rawTotal.toInt() : int.parse('$rawTotal');
+    final bytes = base64Decode(frame['data'] as String);
+    brain2AssertDecodedFrameBytes(bytes.length);
+
     final key = '$peer::$id';
-    final assembly = _incomingFrames.putIfAbsent(
-      key,
-      () => _Brain2FrameAssembly(total),
-    );
+    var assembly = _incomingFrames[key];
+    if (assembly == null) {
+      if (_incomingFrameAssembliesForPeer(peer) >=
+          brain2SyncFrameMaxAssemblies) {
+        throw StateError('Too many concurrent Brain2 frame assemblies');
+      }
+      assembly = _Brain2FrameAssembly(total);
+      _incomingFrames[key] = assembly;
+    }
     if (assembly.total != total) {
       _incomingFrames.remove(key);
       throw StateError('Brain2 transport frame total changed');
     }
     if (assembly.parts[index] != null) return;
 
-    final bytes = base64Decode('${frame['data'] ?? ''}');
+    if (_incomingFrameBytesForPeer(peer) + bytes.length >
+        _brain2TransportMaxReassembledBytes) {
+      _incomingFrames.remove(key);
+      throw StateError('Brain2 aggregate frame reassembly budget exceeded');
+    }
+
     assembly.parts[index] = bytes;
     assembly.received += 1;
     assembly.bytes += bytes.length;
-    if (assembly.bytes > _brain2TransportMaxReassembledBytes) {
-      _incomingFrames.remove(key);
-      throw StateError('Brain2 transport message exceeded reassembly limit');
-    }
+    assembly.updatedAtMs = DateTime.now().millisecondsSinceEpoch;
     if (assembly.received != assembly.total) return;
 
     final builder = BytesBuilder(copy: false);
@@ -341,12 +424,16 @@ class Brain2P2PSync {
       builder.add(part);
     }
     _incomingFrames.remove(key);
+
     final decoded = jsonDecode(utf8.decode(builder.takeBytes()));
     if (decoded is! Map) {
       throw const FormatException(
-          'Reassembled Brain2 message is not an object.');
+        'Reassembled Brain2 message is not an object.',
+      );
     }
-    await _message(peer, decoded.cast<String, Object?>());
+    final map = decoded.cast<String, Object?>();
+    brain2AssertWireMessageType(map['type']);
+    await _message(peer, map);
   }
 
   bool get hasMemoryConflict => _memoryConflicts.isNotEmpty;
@@ -400,6 +487,8 @@ class Brain2P2PSync {
     await _ensureOpenChannel(peer);
 
     _merging = true;
+    _mergePhase = 'REQUESTED';
+    _mergeSeedOrdinal = 0;
     _status(
       Brain2P2PStage.bootstrapping,
       'Preparing deterministic merge. No local conversation data will be deleted…',
@@ -413,6 +502,8 @@ class Brain2P2PSync {
       });
     } catch (error) {
       _merging = false;
+      _mergePhase = 'IDLE';
+      _mergeSeedOrdinal = 0;
       _status(
         Brain2P2PStage.memoryConflict,
         'Merge transport failed before data transfer. Reconnect and retry. ($error)',
@@ -439,6 +530,15 @@ class Brain2P2PSync {
     _pendingIce.remove(peer);
     _remoteDescriptionReady.remove(peer);
     _awaitingRemoteAnswer.remove(peer);
+    _awaitingAck.remove(peer);
+    _outboundManifestHash.remove(peer);
+    _outboundToSequence.remove(peer);
+    _bootstrapExpectedOrdinal.remove(peer);
+    _clearTransportFrames(peer);
+    if (!_merging) {
+      _mergePhase = 'IDLE';
+      _mergeSeedOrdinal = 0;
+    }
 
     _status(
       Brain2P2PStage.signaling,
@@ -514,6 +614,8 @@ class Brain2P2PSync {
   Future<void> _consumeSignals() async {
     final signals = await api.pullSignals(deviceId, deviceToken);
     for (final signal in signals) {
+      final signalId = '${signal['id'] ?? ''}';
+      if (signalId.isNotEmpty && !_signalReplay.accept(signalId)) continue;
       final from = '${signal['fromDeviceId']}';
       final kind = '${signal['kind']}';
       final payload = (signal['payload'] as Map?)?.cast<String, dynamic>();
@@ -615,6 +717,7 @@ class Brain2P2PSync {
   }
 
   void _scheduleHello(String peer) {
+    if (_merging) return;
     // _attach() stores the channel before WebRTC reports OPEN. Mutation/reconcile
     // timers must not attempt hello while the channel is still CONNECTING.
     if (!_channelIsOpen(peer)) return;
@@ -661,6 +764,9 @@ class Brain2P2PSync {
   Future<void> _send(String peer, Map<String, Object?> message) async {
     final raw = jsonEncode(message);
     final bytes = Uint8List.fromList(utf8.encode(raw));
+    if (bytes.length > _brain2TransportMaxReassembledBytes) {
+      throw StateError('Brain2 logical P2P message exceeded the 64 MiB limit');
+    }
     if (bytes.length <= _brain2TransportFramePayloadBytes) {
       await _sendPhysicalText(peer, raw);
       return;
@@ -707,8 +813,15 @@ class Brain2P2PSync {
   }
 
   Future<void> _message(String peer, Map<String, Object?> message) async {
+    brain2AssertWireMessageType(message['type']);
     switch ('${message['type']}') {
       case 'hello':
+        if (_merging) {
+          throw StateError('Brain2 hello is not allowed during an active merge');
+        }
+        if (message['summary'] is! Map) {
+          throw StateError('Invalid Brain2 hello summary');
+        }
         final remote = (message['summary'] as Map).cast<String, Object?>();
         final localRoot = await db.memoryRoot();
         final remoteRoot = '${remote['memoryRoot']}';
@@ -752,6 +865,7 @@ class Brain2P2PSync {
             'Memory verified. Requesting initial bootstrap…',
             peer: peer,
           );
+          _bootstrapExpectedOrdinal[peer] = 0;
           await _send(peer, {'type': 'bootstrap_request'});
         } else if (remoteMessages == 0 && localMessages > 0) {
           // The empty peer will request the bootstrap. Waiting avoids sending
@@ -778,12 +892,18 @@ class Brain2P2PSync {
         break;
 
       case 'sync_request':
+        if (_merging) {
+          throw StateError('Sync request is not allowed during an active merge');
+        }
         _scheduleFlush(peer, immediate: true);
         break;
 
       case 'merge_accept':
         final targetRoot = '${message['targetRoot'] ?? ''}';
         final remote = _memoryConflicts[peer];
+        if (!_merging || _mergePhase != 'REQUESTED') {
+          throw StateError('Unexpected Brain2 merge_accept');
+        }
         if (remote == null || targetRoot != '${remote['memoryRoot']}') {
           throw StateError('Unexpected Brain2 merge target.');
         }
@@ -793,6 +913,8 @@ class Brain2P2PSync {
           parentRoots: [oldRoot, targetRoot],
         );
         await onMemoryRootChanged?.call(targetRoot);
+        _mergePhase = 'RECEIVING_SEED';
+        _mergeSeedOrdinal = 0;
         _status(
           Brain2P2PStage.bootstrapping,
           'Merge accepted. Receiving the web replica into this phone…',
@@ -802,7 +924,22 @@ class Brain2P2PSync {
         break;
 
       case 'merge_seed_chunk':
+        if (!_merging || _mergePhase != 'RECEIVING_SEED') {
+          throw StateError('Unexpected Brain2 merge seed chunk');
+        }
         final targetRoot = '${message['targetRoot'] ?? ''}';
+        if (targetRoot != await db.memoryRoot()) {
+          throw StateError('Brain2 merge seed root mismatch');
+        }
+        final ordinal = message['ordinal'] is num
+            ? (message['ordinal'] as num).toInt()
+            : int.tryParse('${message['ordinal']}') ?? -1;
+        if (ordinal != _mergeSeedOrdinal) {
+          throw StateError(
+            'Brain2 merge seed ordinal mismatch: '
+            'expected $_mergeSeedOrdinal, got $ordinal',
+          );
+        }
         final wireTable = '${message['table'] ?? ''}';
         final recordsJson = '${message['recordsJson'] ?? ''}';
         final expected = '${message['chunkHash'] ?? ''}';
@@ -817,6 +954,7 @@ class Brain2P2PSync {
             .map((e) => (e as Map).cast<String, Object?>())
             .toList(growable: false);
         await db.applyMergeChunk(targetRoot, wireTable, records);
+        _mergeSeedOrdinal += 1;
         _status(
           Brain2P2PStage.bootstrapping,
           'Merging web data · $wireTable',
@@ -825,6 +963,9 @@ class Brain2P2PSync {
         break;
 
       case 'merge_seed_complete':
+        if (!_merging || _mergePhase != 'RECEIVING_SEED') {
+          throw StateError('Unexpected Brain2 merge seed completion');
+        }
         final targetRoot = '${message['targetRoot'] ?? ''}';
         if (targetRoot != await db.memoryRoot()) {
           throw StateError('Brain2 merge root changed unexpectedly');
@@ -834,10 +975,15 @@ class Brain2P2PSync {
           'Web data merged. Returning the combined replica for convergence…',
           peer: peer,
         );
+        _mergePhase = 'RETURNING';
         await _sendMergeReturn(peer, targetRoot);
+        _mergePhase = 'AWAITING_COMPLETE';
         break;
 
       case 'merge_complete':
+        if (!_merging || _mergePhase != 'AWAITING_COMPLETE') {
+          throw StateError('Unexpected Brain2 merge completion');
+        }
         final targetRoot = '${message['targetRoot'] ?? ''}';
         if (targetRoot != await db.memoryRoot()) {
           throw StateError('Brain2 merge completion root mismatch');
@@ -845,6 +991,8 @@ class Brain2P2PSync {
         await db.finalizeMemoryMerge();
         _memoryConflicts.remove(peer);
         _merging = false;
+        _mergePhase = 'IDLE';
+        _mergeSeedOrdinal = 0;
         _status(
           Brain2P2PStage.syncingDeltas,
           'Both memories merged. Rechecking ordered deltas…',
@@ -868,6 +1016,13 @@ class Brain2P2PSync {
         final ordinal = message['ordinal'] is num
             ? (message['ordinal'] as num).toInt()
             : int.parse('${message['ordinal']}');
+        final expectedOrdinal = _bootstrapExpectedOrdinal[peer];
+        if (expectedOrdinal == null || ordinal != expectedOrdinal) {
+          throw StateError(
+            'Brain2 bootstrap ordinal mismatch: '
+            'expected ${expectedOrdinal ?? 0}, got $ordinal',
+          );
+        }
         final expected = '${message['chunkHash']}';
 
         late final List<Map<String, Object?>> records;
@@ -917,6 +1072,7 @@ class Brain2P2PSync {
           _bootstrapPeerMaxSequence[peer] = maxSequence;
         }
         await db.applyBootstrapChunk(memoryRoot, wireTable, records);
+        _bootstrapExpectedOrdinal[peer] = ordinal + 1;
 
         // Receiver-side backpressure:
         // ACK only after the bootstrap chunk is durably committed to SQLite.
@@ -934,10 +1090,14 @@ class Brain2P2PSync {
         break;
 
       case 'bootstrap_complete':
+        if (_bootstrapExpectedOrdinal[peer] == null) {
+          throw StateError('Unexpected Brain2 bootstrap completion');
+        }
         if ('${message['memoryRoot']}' != await db.memoryRoot()) {
           throw StateError('bootstrap memory-root mismatch');
         }
         await db.finalizeBootstrap();
+        _bootstrapExpectedOrdinal.remove(peer);
         final bootstrappedPeerSequence =
             _bootstrapPeerMaxSequence.remove(peer) ?? 0;
         if (bootstrappedPeerSequence > 0) {
@@ -957,7 +1117,13 @@ class Brain2P2PSync {
         break;
 
       case 'mutations':
-        final list = (message['mutations'] as List)
+        final rawMutations = message['mutations'];
+        if (rawMutations is! List ||
+            rawMutations.isEmpty ||
+            rawMutations.length > brain2SyncMutationBatchMax) {
+          throw StateError('Invalid Brain2 mutation batch size');
+        }
+        final list = rawMutations
             .map(
               (e) => _mutationFromJson(
                 (e as Map).cast<String, Object?>(),
@@ -965,6 +1131,21 @@ class Brain2P2PSync {
             )
             .toList()
           ..sort((a, b) => a.originSequence.compareTo(b.originSequence));
+
+        final fromSequence = message['fromSequence'] is num
+            ? (message['fromSequence'] as num).toInt()
+            : int.tryParse('${message['fromSequence']}') ?? -1;
+        final toSequence = message['toSequence'] is num
+            ? (message['toSequence'] as num).toInt()
+            : int.tryParse('${message['toSequence']}') ?? -1;
+        if (!brain2SequenceRangeMatches(
+          list.map((mutation) => mutation.originSequence).toList(),
+          fromSequence,
+          toSequence,
+        )) {
+          throw StateError('Brain2 mutation batch sequence range mismatch');
+        }
+
         final manifestHash = sha256Hex(
           list
               .map(
@@ -976,11 +1157,36 @@ class Brain2P2PSync {
           throw StateError('mutation batch manifest mismatch');
         }
 
-        var lastApplied = await db.peerCursor(peer, peer);
+        final localRoot = await db.memoryRoot();
         for (final mutation in list) {
           if (mutation.originDeviceId != peer) {
             throw StateError('mutation origin device mismatch');
           }
+          if (mutation.memoryRoot != localRoot) {
+            throw StateError('mutation memory-root mismatch');
+          }
+          final payloadHash =
+              sha256Hex(canonicalJson(mutation.payload.toJson()));
+          if (payloadHash != mutation.payloadHash) {
+            throw StateError('mutation payload hash mismatch');
+          }
+          final expectedEnvelope = MutationRecord.envelopeHash(
+            memoryRoot: mutation.memoryRoot,
+            originDeviceId: mutation.originDeviceId,
+            originSequence: mutation.originSequence,
+            type: mutation.type,
+            entityType: mutation.entityType,
+            entityId: mutation.entityId,
+            payloadHash: mutation.payloadHash,
+            parents: mutation.parentMutationIds,
+          );
+          if (expectedEnvelope != mutation.hash) {
+            throw StateError('mutation envelope hash mismatch');
+          }
+        }
+
+        var lastApplied = await db.peerCursor(peer, peer);
+        for (final mutation in list) {
           final gapExpected = brain2MutationGapExpected(
             lastApplied,
             mutation.originSequence,
@@ -1007,18 +1213,43 @@ class Brain2P2PSync {
         break;
 
       case 'ack':
+        if (!_awaitingAck.contains(peer)) break;
         final origin = '${message['originDeviceId'] ?? deviceId}';
         final sequence = message['sequence'] is num
             ? (message['sequence'] as num).toInt()
             : int.tryParse('${message['sequence']}') ?? 0;
+        final manifestHash = '${message['manifestHash'] ?? ''}';
+        if (!brain2AckMatchesPending(
+          awaiting: _awaitingAck.contains(peer),
+          pendingManifestHash: _outboundManifestHash[peer] ?? '',
+          pendingToSequence: _outboundToSequence[peer] ?? 0,
+          ackManifestHash: manifestHash,
+          ackSequence: sequence,
+          ackOriginDeviceId: origin,
+          localDeviceId: deviceId,
+        )) {
+          throw StateError(
+            'Brain2 ACK does not match the pending mutation batch',
+          );
+        }
         await db.setPeerCursor(peer, origin, sequence);
         _awaitingAck.remove(peer);
+        _outboundManifestHash.remove(peer);
+        _outboundToSequence.remove(peer);
         _scheduleFlush(peer);
         await _markConvergedIfPossible(peer);
         break;
 
+      case 'bootstrap_ack':
+        break;
+
       case 'ping':
         break;
+
+      default:
+        throw StateError(
+          'Unsupported Brain2 P2P message type: ${message['type']}',
+        );
     }
   }
 
@@ -1231,6 +1462,8 @@ class Brain2P2PSync {
           .join('|'),
     );
     _awaitingAck.add(peer);
+    _outboundManifestHash[peer] = manifestHash;
+    _outboundToSequence[peer] = mutations.last.originSequence;
     try {
       await _send(peer, {
         'type': 'mutations',
@@ -1248,6 +1481,8 @@ class Brain2P2PSync {
       );
     } catch (_) {
       _awaitingAck.remove(peer);
+      _outboundManifestHash.remove(peer);
+      _outboundToSequence.remove(peer);
       rethrow;
     }
   }
