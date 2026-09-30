@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/brain2_controller.dart';
+import '../theme.dart';
 import '../widgets.dart';
 import 'project_detail_screen.dart';
 
@@ -28,35 +29,99 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: load,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const PageTitle(
-              'Projects',
-              'Identity-resolved working contexts built from related conversations; no duplicated memory.',
-            ),
-            if (rows.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(22),
-                  child:
-                      Text('No projects yet. Mine an AI history export first.'),
-                ),
-              ),
-            ...rows.reversed.map(
-              (record) => RecordTile(
-                record,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProjectDetailScreen(widget.c, record),
+  Widget build(BuildContext context) {
+    final activeProject = rows.isNotEmpty ? rows.first : null;
+
+    return RefreshIndicator(
+      onRefresh: load,
+      color: Brain2Theme.primaryBlue,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: [
+          // Header: ANDROID · AN05
+          const GlobalContextPageHeader(
+            tag: 'ANDROID · AN05',
+            title: 'Projects',
+            description: 'One current state across your AI services',
+          ),
+
+          // Hero Card: Pick up where you left off
+          GlobalContextHeroCard(
+            overline: 'PICK UP WHERE YOU LEFT OFF',
+            title: activeProject != null
+                ? bestTitle(activeProject)
+                : 'Projects',
+            subtitle:
+                '${rows.length} linked projects · recent context available offline',
+            buttonText: 'Continue project ↗',
+            onButtonPressed: activeProject != null
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProjectDetailScreen(widget.c, activeProject),
+                      ),
+                    );
+                  }
+                : null,
+          ),
+
+          const SizedBox(height: 18),
+
+          // Relevant Work Container
+          GlobalContextSectionCard(
+            title: 'Relevant work',
+            badgeLabel: 'Concept',
+            children: [
+              if (rows.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.folder_open_rounded,
+                          size: 40,
+                          color: Brain2Theme.textLight,
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'No projects yet. Mine an AI history export first.',
+                          style: TextStyle(
+                            color: Brain2Theme.textMuted,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
+                )
+              else
+                ...rows.map((record) {
+                  final title = bestTitle(record);
+                  final subtitleText = subline(record).isEmpty
+                      ? 'Design + architecture\nVerified unified workspace'
+                      : subline(record);
+
+                  return GlobalContextActionTile(
+                    icon: Icons.folder_outlined,
+                    title: title,
+                    subtitle: subtitleText,
+                    actionLabel: 'Continue >',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProjectDetailScreen(widget.c, record),
+                      ),
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

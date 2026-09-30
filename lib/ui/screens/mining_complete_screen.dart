@@ -7,6 +7,8 @@ import 'package:share_plus/share_plus.dart';
 import '../../app/brain2_controller.dart';
 import '../../miner/miner_formatters.dart';
 import '../../miner/miner_models.dart';
+import '../theme.dart';
+import '../widgets.dart';
 
 class MiningCompleteScreen extends StatelessWidget {
   final Brain2Controller controller;
@@ -67,49 +69,75 @@ class MiningCompleteScreen extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.72,
         maxChildSize: 0.92,
         builder: (context, scrollController) => Column(
           children: [
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Container(
-              width: 44,
+              width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xff405164),
+                color: Brain2Theme.border,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Generated Files',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Brain2Theme.textPrimary,
+                      ),
                     ),
                   ),
-                  Text('${run.generatedFiles.length}'),
+                  GlobalContextPillBadge(
+                    label: '${run.generatedFiles.length} files',
+                    backgroundColor: Brain2Theme.pillBadgeBg,
+                    textColor: Brain2Theme.brandBlue,
+                  ),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            const Divider(height: 1, color: Brain2Theme.border),
             Expanded(
-              child: ListView.builder(
+              child: ListView.separated(
                 controller: scrollController,
                 itemCount: run.generatedFiles.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 56, color: Brain2Theme.borderLight),
                 itemBuilder: (_, index) => ListTile(
-                  leading: const Icon(
-                    Icons.description_outlined,
-                    color: Color(0xffa970ff),
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Brain2Theme.heroCardBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.description_outlined,
+                      color: Brain2Theme.brandBlue,
+                      size: 20,
+                    ),
                   ),
                   title: Text(
                     run.generatedFiles[index],
-                    style: const TextStyle(fontSize: 13),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Brain2Theme.textPrimary,
+                    ),
                   ),
                 ),
               ),
@@ -123,36 +151,46 @@ class MiningCompleteScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Brain2Theme.scaffoldBg,
       appBar: AppBar(
-        title: Text(fromHistory ? 'Saved Mining Run' : 'Complete'),
+        title: Text(fromHistory ? 'Saved Mining Run' : 'Mining Complete'),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 34),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
         children: [
           Center(
             child: Container(
-              width: 88,
-              height: 88,
+              width: 80,
+              height: 80,
               decoration: const BoxDecoration(
+                color: Color(0xffe6f4ea),
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Color(0xffa970ff), Color(0xff7c4dff)],
-                ),
               ),
-              child: const Icon(Icons.check_rounded, size: 50),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                size: 50,
+                color: Color(0xff137333),
+              ),
             ),
           ),
           const SizedBox(height: 16),
           Text(
             'Your Brain2 archive is ready',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Brain2Theme.textPrimary,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             'Completed ${formatDateTime(run.completedAt)}',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xff9aa8b7)),
+            style: TextStyle(
+              fontSize: 13,
+              color: Brain2Theme.textSecondary,
+            ),
           ),
           const SizedBox(height: 20),
           _SummaryGrid(run: run),
@@ -160,11 +198,9 @@ class MiningCompleteScreen extends StatelessWidget {
           _Section(
             title: 'Brain2 Memory',
             rows: [
-              _Pair('Canonical conversations',
-                  formatCount(run.conversationsImported)),
+              _Pair('Canonical conversations', formatCount(run.conversationsImported)),
               _Pair('Canonical messages', formatCount(run.messagesImported)),
-              _Pair('ContextVault',
-                  run.nativeContextVaultUsed ? 'Native C++' : 'Fallback'),
+              _Pair('ContextVault', run.nativeContextVaultUsed ? 'Native C++' : 'Fallback'),
               const _Pair('Atomization', 'G + F + I + B250'),
               const _Pair('Current Truth', 'Reconciled'),
               const _Pair('Reader', '.ASIF / RapidRetrieve'),
@@ -195,40 +231,57 @@ class MiningCompleteScreen extends StatelessWidget {
           _Section(
             title: 'Performance',
             rows: [
-              _Pair('ZIP + JSON extraction',
-                  formatDurationMs(run.extractionTimeMs)),
-              _Pair('ContextVault C++',
-                  formatDurationMs(run.nativeProcessingTimeMs)),
-              _Pair('Markdown + output ZIP',
-                  formatDurationMs(run.outputZipTimeMs)),
-              _Pair('Brain2 intelligence import',
-                  formatDurationMs(run.intelligenceImportTimeMs)),
+              _Pair('ZIP + JSON extraction', formatDurationMs(run.extractionTimeMs)),
+              _Pair('ContextVault C++', formatDurationMs(run.nativeProcessingTimeMs)),
+              _Pair('Markdown + output ZIP', formatDurationMs(run.outputZipTimeMs)),
+              _Pair('Brain2 intelligence import', formatDurationMs(run.intelligenceImportTimeMs)),
               _Pair('Total', formatDurationMs(run.totalTimeMs)),
             ],
           ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
             onPressed: () => _share(context),
-            icon: const Icon(Icons.ios_share),
+            icon: const Icon(Icons.ios_share, size: 18),
             label: const Text('Share digest.zip'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Brain2Theme.brandBlue,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => _save(context),
-            icon: const Icon(Icons.download_rounded),
+            icon: const Icon(Icons.download_rounded, size: 18),
             label: const Text('Save digest.zip'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              side: const BorderSide(color: Brain2Theme.border),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              foregroundColor: Brain2Theme.textPrimary,
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () => _showFiles(context),
-            icon: const Icon(Icons.folder_open_outlined),
+            icon: const Icon(Icons.folder_open_outlined, size: 18),
             label: const Text('View Generated Files'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              side: const BorderSide(color: Brain2Theme.border),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              foregroundColor: Brain2Theme.textPrimary,
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
-          const SizedBox(height: 14),
-          const Text(
+          const SizedBox(height: 16),
+          Text(
             'This completed run persists locally and can be reopened from Mining History.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xff9aa8b7), fontSize: 12),
+            style: TextStyle(color: Brain2Theme.textSecondary, fontSize: 12),
           ),
         ],
       ),
@@ -261,30 +314,35 @@ class _SummaryGrid extends StatelessWidget {
               .map(
                 (item) => SizedBox(
                   width: width,
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.label.toUpperCase(),
-                            style: const TextStyle(
-                              color: Color(0xff9aa8b7),
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Brain2Theme.cardBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Brain2Theme.border),
+                    ),
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.label.toUpperCase(),
+                          style: TextStyle(
+                            color: Brain2Theme.textSecondary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
                           ),
-                          const SizedBox(height: 5),
-                          Text(
-                            item.value,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                            ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          item.value,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Brain2Theme.textPrimary,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -304,42 +362,56 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+    return Container(
+      decoration: BoxDecoration(
+        color: Brain2Theme.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Brain2Theme.border),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Brain2Theme.textPrimary,
             ),
-            const SizedBox(height: 8),
-            for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        row.label,
-                        style: const TextStyle(color: Color(0xff9aa8b7)),
+          ),
+          const SizedBox(height: 10),
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      row.label,
+                      style: TextStyle(
+                        color: Brain2Theme.textSecondary,
+                        fontSize: 13,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Text(
-                        row.value,
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      row.value,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: Brain2Theme.textPrimary,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

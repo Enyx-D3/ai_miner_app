@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../app/brain2_controller.dart';
 import '../../sync/p2p_sync.dart';
+import '../theme.dart';
 import '../widgets.dart';
 
 bool _showsSyncProgress(Brain2P2PStage stage) {
@@ -124,41 +125,78 @@ class _DevicesScreenState extends State<DevicesScreen> {
         status.stage == Brain2P2PStage.memoryConflict;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
-        const PageTitle(
-          'Devices & Sync',
-          'Web creates a short-lived pairing QR. Mobile scans it, joins the same Brain2 memory root, bootstraps the full replica, then exchanges only ordered Global Delta mutations.',
+        const GlobalContextPageHeader(
+          tag: 'ANDROID · AN09',
+          title: 'Devices',
+          description: 'Pair and sync without claiming a false live connection',
         ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    _StageDot(status.stage),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _stageTitle(status.stage),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
+
+        // Devices Container matching AN09_devices.png
+        GlobalContextSectionCard(
+          title: 'Devices',
+          badgeLabel: 'Concept',
+          children: [
+            GlobalContextActionTile(
+              icon: Icons.phone_android_rounded,
+              title: 'This device',
+              subtitle: 'Local memory available\nID: ${widget.c.deviceId.length > 20 ? '${widget.c.deviceId.substring(0, 20)}…' : widget.c.deviceId}',
+              actionLabel: 'Details >',
+              onTap: () {},
+            ),
+            GlobalContextActionTile(
+              icon: Icons.laptop_mac_rounded,
+              title: status.peerDeviceId != null ? 'MacBook / Peer' : 'Peer device',
+              subtitle: paired
+                  ? 'Paired · ${_stageTitle(status.stage)}\n${status.message}'
+                  : 'Not connected\nScan QR on web to pair and sync',
+              actionLabel: paired ? 'Inspect >' : 'Pair >',
+              onTap: () {
+                if (!paired) {
+                  handled = false;
+                  setState(() => scanning = true);
+                }
+              },
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 18),
+
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Brain2Theme.borderLight),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  _StageDot(status.stage),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _stageTitle(status.stage),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  status.message,
-                  style: const TextStyle(
-                    color: Color(0xff9aa8b7),
-                    height: 1.4,
                   ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                status.message,
+                style: TextStyle(
+                  color: Brain2Theme.textMuted,
+                  height: 1.4,
                 ),
+              ),
                 if (status.peerDeviceId != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -431,7 +469,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
               ],
             ),
           ),
-        ),
         const SizedBox(height: 12),
         const Card(
           child: Padding(

@@ -4,6 +4,8 @@ import '../../app/brain2_controller.dart';
 import '../../miner/miner_formatters.dart';
 import '../../miner/miner_history_repository.dart';
 import '../../miner/miner_models.dart';
+import '../theme.dart';
+import '../widgets.dart';
 import 'mining_complete_screen.dart';
 
 class MiningHistoryScreen extends StatefulWidget {
@@ -33,37 +35,52 @@ class _MiningHistoryScreenState extends State<MiningHistoryScreen> {
             _reload();
             await _runs;
           },
+          color: Brain2Theme.primaryBlue,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
-              Text(
-                'Mining History',
-                style: Theme.of(context).textTheme.headlineSmall,
+              const GlobalContextPageHeader(
+                tag: 'GLOBAL / HISTORY',
+                title: 'Mining History',
+                description:
+                    'Completed local digest + Brain2 intelligence runs.',
               ),
-              const SizedBox(height: 5),
-              const Text(
-                'Completed local digest + Brain2 intelligence runs.',
-                style: TextStyle(color: Color(0xff9aa8b7)),
-              ),
-              const SizedBox(height: 16),
               if (snapshot.connectionState == ConnectionState.waiting)
-                const Center(child: CircularProgressIndicator())
-              else if (runs.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'No completed mining runs yet.',
-                      textAlign: TextAlign.center,
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: Brain2Theme.primaryBlue,
                     ),
                   ),
                 )
+              else if (runs.isEmpty)
+                const GlobalContextSectionCard(
+                  title: 'Past Archives',
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No completed mining runs yet.',
+                          style: TextStyle(color: Brain2Theme.textMuted),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
               else
-                for (final run in runs)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Card(
-                      child: ListTile(
+                GlobalContextSectionCard(
+                  title: 'Completed exports (${runs.length})',
+                  badgeLabel: 'Verified',
+                  children: [
+                    for (final run in runs)
+                      GlobalContextActionTile(
+                        icon: Icons.archive_outlined,
+                        title: run.inputFileName,
+                        subtitle:
+                            '${formatDateTime(run.completedAt)}\n${formatCount(run.threads)} threads · ${formatCount(run.atoms)} atoms · ${formatBytes(run.outputZipBytes)}',
+                        actionLabel: 'Details >',
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => MiningCompleteScreen(
@@ -73,27 +90,9 @@ class _MiningHistoryScreenState extends State<MiningHistoryScreen> {
                             ),
                           ),
                         ),
-                        leading: const Icon(
-                          Icons.folder_zip_rounded,
-                          color: Color(0xffa970ff),
-                        ),
-                        title: Text(
-                          run.inputFileName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        subtitle: Text(
-                          '${formatDateTime(run.completedAt)}\n'
-                          '${formatCount(run.threads)} threads · '
-                          '${formatCount(run.atoms)} atoms · '
-                          '${formatBytes(run.outputZipBytes)}',
-                        ),
-                        isThreeLine: true,
-                        trailing: const Icon(Icons.chevron_right),
                       ),
-                    ),
-                  ),
+                  ],
+                ),
             ],
           ),
         );

@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../asif/asif_reader_core.dart';
@@ -44,6 +44,16 @@ class Brain2Controller extends ChangeNotifier {
   Map<String, int> counts = {};
   String readerState = 'UNKNOWN';
   late String deviceId;
+  ThemeMode themeMode = ThemeMode.light;
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    themeMode = mode;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('brain2_theme_mode', mode.name);
+    } catch (_) {}
+  }
 
   Future<void> boot() async {
     try {
@@ -55,6 +65,11 @@ class Brain2Controller extends ChangeNotifier {
           .listen((_) => _scheduleRefresh());
 
       final prefs = await SharedPreferences.getInstance();
+      final savedTheme = prefs.getString('brain2_theme_mode') ?? 'light';
+      themeMode = ThemeMode.values.firstWhere(
+        (m) => m.name == savedTheme,
+        orElse: () => ThemeMode.light,
+      );
       deviceId = prefs.getString('brain2_mobile_device_id') ??
           canonicalId(
             'dev',

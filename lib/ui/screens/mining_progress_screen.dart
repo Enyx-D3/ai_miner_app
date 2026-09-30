@@ -6,6 +6,8 @@ import '../../app/brain2_controller.dart';
 import '../../miner/miner_history_repository.dart';
 import '../../miner/miner_models.dart';
 import '../../miner/miner_service.dart';
+import '../theme.dart';
+import '../widgets.dart';
 import 'mining_complete_screen.dart';
 
 class MiningProgressScreen extends StatefulWidget {
@@ -190,95 +192,167 @@ class _MiningProgressScreenState extends State<MiningProgressScreen> {
   Widget build(BuildContext context) {
     final fraction = _progress.percent.clamp(0, 100).toDouble() / 100.0;
     return Scaffold(
+      backgroundColor: Brain2Theme.canvasLight,
       appBar: AppBar(
-        title: const Text('Mining locally'),
+        title: const Text(
+          'Mining progress',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+        ),
         automaticallyImplyLeading: !_running,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(22, 28, 22, 30),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          const SizedBox(height: 18),
-          Center(
-            child: SizedBox(
-              width: 132,
-              height: 132,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 126,
-                    height: 126,
-                    child: CircularProgressIndicator(
-                      value: _running ? fraction : null,
-                      strokeWidth: 8,
-                      backgroundColor: const Color(0xff213343),
-                    ),
+          // Header: ANDROID · AN03
+          const GlobalContextPageHeader(
+            tag: 'ANDROID · AN03',
+            title: 'Mining progress',
+            description: 'See each phase; resume safely after interruption',
+          ),
+
+          // Mining checkpoint Container (AN03_mining.png)
+          GlobalContextSectionCard(
+            title: 'Mining checkpoint',
+            badgeLabel: 'Local-first',
+            children: [
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FBFE),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFFCCE4F7),
+                    width: 1.5,
                   ),
-                  Text(
-                    '${_progress.percent}%',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            _progress.message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'The export remains on this device.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xff9aa8b7)),
-          ),
-          const SizedBox(height: 24),
-          _StageRow(
-            title: 'Detect provider + normalize export',
-            done: _progress.percent >= 28,
-            active: _progress.stage == MinerStage.extracting,
-          ),
-          _StageRow(
-            title: 'ContextVault C++ digest',
-            done: _progress.percent >= 76,
-            active: _progress.stage == MinerStage.contextVault,
-          ),
-          _StageRow(
-            title: 'Create Markdown + digest.zip',
-            done: _progress.percent >= 82,
-            active: _progress.stage == MinerStage.packaging,
-          ),
-          _StageRow(
-            title: 'Canonical ingestion + Global Memory',
-            done: _progress.percent >= 96,
-            active: _progress.stage == MinerStage.importingMemory,
-          ),
-          _StageRow(
-            title: 'G+F+I+B250 / Current Truth / LifeWiki / Notebooks',
-            done: _progress.percent >= 100,
-            active: _progress.stage == MinerStage.intelligence,
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 20),
-            Card(
-              color: Colors.red.withOpacity(0.08),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: SelectableText(
-                  _error!,
-                  style: const TextStyle(color: Colors.redAccent),
                 ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Brain2Theme.primaryBlueLight,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_upward_rounded,
+                        color: Brain2Theme.primaryBlue,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _progress.message,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Brain2Theme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${_progress.percent}% completed · on-device pipeline',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Brain2Theme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: _running ? fraction : 1.0,
+                        backgroundColor: const Color(0xFFE2E8F0),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Brain2Theme.primaryBlue,
+                        ),
+                        minHeight: 7,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // Coverage and next actions Container
+          GlobalContextSectionCard(
+            title: 'Coverage and next actions',
+            children: [
+              GlobalContextActionTile(
+                icon: Icons.inventory_2_outlined,
+                title: 'Inventory',
+                subtitle: '${_progress.percent}% of pipeline stages executed\nDemonstration figures · not product benchmarks',
+                actionLabel: 'View coverage >',
+                onTap: () {},
+              ),
+              GlobalContextActionTile(
+                icon: Icons.tune_rounded,
+                title: 'Processing',
+                subtitle: 'Structure → Link → Verify\nResumable checkpoints; exact source IDs',
+                actionLabel: _running ? 'Running >' : 'Complete >',
+                onTap: () {},
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // Stage Details Container
+          GlobalContextSectionCard(
+            title: 'Pipeline stages',
+            children: [
+              _StageRow(
+                title: 'Detect provider + normalize export',
+                done: _progress.percent >= 28,
+                active: _progress.stage == MinerStage.extracting,
+              ),
+              _StageRow(
+                title: 'ContextVault C++ digest',
+                done: _progress.percent >= 76,
+                active: _progress.stage == MinerStage.contextVault,
+              ),
+              _StageRow(
+                title: 'Create Markdown + digest.zip',
+                done: _progress.percent >= 82,
+                active: _progress.stage == MinerStage.packaging,
+              ),
+              _StageRow(
+                title: 'Canonical ingestion + Global Memory',
+                done: _progress.percent >= 96,
+                active: _progress.stage == MinerStage.importingMemory,
+              ),
+              _StageRow(
+                title: 'Current Truth / LifeWiki / Notebooks',
+                done: _progress.percent >= 100,
+                active: _progress.stage == MinerStage.intelligence,
+              ),
+            ],
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: SelectableText(
+                _error!,
+                style: const TextStyle(color: Colors.redAccent),
               ),
             ),
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Back to Mine'),
+              child: const Text('Back to Home →'),
             ),
           ],
         ],
@@ -300,27 +374,37 @@ class _StageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = done
-        ? const Color(0xff31d6a1)
-        : active
-            ? const Color(0xffa970ff)
-            : const Color(0xff6f7d8b);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(
             done
-                ? Icons.check_circle
+                ? Icons.check_circle_rounded
                 : active
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-            color: color,
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+            color: done
+                ? Brain2Theme.primaryBlue
+                : active
+                    ? Brain2Theme.primaryBlue
+                    : Brain2Theme.textLight,
             size: 20,
           ),
-          const SizedBox(width: 10),
-          Expanded(child: Text(title, style: TextStyle(color: color))),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                color: done || active
+                    ? Brain2Theme.textDark
+                    : Brain2Theme.textMuted,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
         ],
       ),
     );

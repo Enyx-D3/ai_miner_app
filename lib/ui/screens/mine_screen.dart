@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../../app/brain2_controller.dart';
 import '../../miner/miner_formatters.dart';
+import '../theme.dart';
+import '../widgets.dart';
 import 'mining_progress_screen.dart';
+import 'projects_screen.dart';
+import 'search_screen.dart';
 
 class MineScreen extends StatefulWidget {
   final Brain2Controller controller;
@@ -74,170 +78,270 @@ class _MineScreenState extends State<MineScreen> {
   Widget build(BuildContext context) {
     final nativeReady =
         widget.controller.contextVault.native.markdownFileAvailable;
+    final projectCount = widget.controller.counts['projects'] ?? 0;
+    final messagesCount = widget.controller.counts['messages'] ?? 0;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
-        const SizedBox(height: 12),
-        Center(
-          child: Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: const Color(0xff7c4dff).withOpacity(0.15),
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: const Icon(
-              Icons.auto_awesome,
-              color: Color(0xffa970ff),
-              size: 38,
-            ),
-          ),
+        // Page Header: ANDROID · AN01
+        const GlobalContextPageHeader(
+          tag: 'ANDROID · AN01',
+          title: 'Today in your AI life',
+          description: 'Pick up work without reopening old conversations',
         ),
+
+        // Hero Card: PICK UP WHERE YOU LEFT OFF
+        GlobalContextHeroCard(
+          overline: 'PICK UP WHERE YOU LEFT OFF',
+          title: 'Today in your AI life',
+          subtitle:
+              '$projectCount linked projects · recent context available offline',
+          buttonText: 'Continue project ↗',
+          onButtonPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: const Text('Projects')),
+                  body: ProjectsScreen(widget.controller),
+                ),
+              ),
+            );
+          },
+        ),
+
         const SizedBox(height: 18),
-        Text(
-          'Brain2 AI Miner',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Mine ChatGPT, Claude, Gemini and other supported AI exports into one local Markdown archive and living Brain2 intelligence replica.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Color(0xff9aa8b7), height: 1.5),
-        ),
-        const SizedBox(height: 22),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: nativeReady
-                ? const Color(0xff31d6a1).withOpacity(0.08)
-                : Colors.orange.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: nativeReady
-                  ? const Color(0xff31d6a1).withOpacity(0.28)
-                  : Colors.orange.withOpacity(0.32),
+
+        // Relevant Work Section
+        GlobalContextSectionCard(
+          title: 'Relevant work',
+          badgeLabel: 'Concept',
+          children: [
+            GlobalContextActionTile(
+              icon: Icons.auto_awesome,
+              title: 'Continue',
+              subtitle: projectCount > 0
+                  ? 'Your active projects · $messagesCount verified records'
+                  : 'Global Context design\nYour current project · 4 linked threads',
+              actionLabel: 'Continue project >',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      appBar: AppBar(title: const Text('Projects')),
+                      body: ProjectsScreen(widget.controller),
+                    ),
+                  ),
+                );
+              },
             ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                nativeReady ? Icons.verified : Icons.warning_amber_rounded,
-                color: nativeReady ? const Color(0xff31d6a1) : Colors.orange,
+            GlobalContextActionTile(
+              icon: Icons.search,
+              title: 'Perfect Recall',
+              subtitle: messagesCount > 0
+                  ? '$messagesCount indexed messages\nIncludes earlier design decisions'
+                  : '12 useful results\nIncludes earlier design decisions',
+              actionLabel: 'Search >',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      appBar: AppBar(title: const Text('Perfect Recall')),
+                      body: SearchScreen(widget.controller),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 18),
+
+        // Import Section (AN02_import.png)
+        GlobalContextSectionCard(
+          title: 'Import history',
+          badgeLabel: 'Local-first',
+          children: [
+            // Dashed Upload Zone
+            InkWell(
+              onTap: _pick,
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FBFE),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFFCCE4F7),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Brain2Theme.primaryBlueLight,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_upward_rounded,
+                        color: Brain2Theme.primaryBlue,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _file == null
+                          ? 'Select an archive'
+                          : _file!.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Brain2Theme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _file == null
+                          ? (_picking
+                              ? 'Opening file picker…'
+                              : 'No archive is uploaded in this concept')
+                          : formatBytes(_file!.size),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Brain2Theme.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: _file != null ? 1.0 : (_picking ? null : 0.4),
+                        backgroundColor: const Color(0xFFE2E8F0),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Brain2Theme.primaryBlue,
+                        ),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  nativeReady
-                      ? 'Native ContextVault C++ ready'
-                      : 'ContextVault ARM64 binary not loaded. Build/install libcontextvault.so before mining.',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+
+            const SizedBox(height: 14),
+
+            // Archive status tile
+            GlobalContextActionTile(
+              icon: Icons.archive_outlined,
+              title: _file == null ? 'Archive' : _file!.name,
+              subtitle: _file == null
+                  ? 'ChatGPT export.zip\nIn the import queue · 342 MB'
+                  : 'Selected export · ${formatBytes(_file!.size)}',
+              actionLabel: _file == null ? 'Choose file >' : 'Change >',
+              onTap: _pick,
+            ),
+
+            // Provider selection tile
+            GlobalContextActionTile(
+              icon: Icons.hub_outlined,
+              title: 'Provider',
+              subtitle: 'ChatGPT · Claude · Gemini\nAdd archives or connect a supported source',
+              actionLabel: 'Select >',
+              onTap: _pick,
+            ),
+
+            if (_file != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: nativeReady ? _start : null,
+                  icon: const Icon(Icons.bolt_rounded, size: 20),
+                  label: const Text('Mine This Export →'),
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_file == null)
-          InkWell(
-            onTap: _pick,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 34),
-              decoration: BoxDecoration(
-                color: const Color(0xff0c1925),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xff7c4dff)),
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.upload_file_rounded,
-                    color: Color(0xffa970ff),
-                    size: 38,
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Select AI Conversation Export',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _picking
-                        ? 'Opening file picker…'
-                        : 'Choose .zip or .json · ChatGPT / Claude / Gemini / more',
-                    style: const TextStyle(color: Color(0xff9aa8b7)),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.folder_zip_rounded,
-                    color: Color(0xffa970ff),
-                    size: 42,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _file!.name,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    formatBytes(_file!.size),
-                    style: const TextStyle(color: Color(0xff9aa8b7)),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: nativeReady ? _start : null,
-                      icon: const Icon(Icons.bolt_rounded),
-                      label: const Text('Mine This Export'),
+
+            if (!nativeReady) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.amber.shade800, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'ContextVault binary not detected. Compiling without native acceleration.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _pick,
-                    child: const Text('Choose another file'),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.redAccent),
-          ),
-        ],
+            ],
+
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
+
         const SizedBox(height: 18),
-        const Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.lock_outline, color: Color(0xffa970ff)),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Local-first flow\nYour export stays on the phone. The same run creates digest.zip, canonical memory, Current Truth, Projects, LifeWiki and Live Notebooks.',
-                    style: TextStyle(height: 1.45),
+
+        // Local-first notice banner
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Brain2Theme.heroCyan,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFCCE4F7)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.security_rounded,
+                color: Brain2Theme.primaryBlue,
+                size: 20,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Source data is not silently promoted into global context or copied into another model. Processing happens locally first.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF244464),
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
