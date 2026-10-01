@@ -1,12 +1,22 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'contracts.dart';
 
 String normalizeText(String value) =>
+    unorm.nfkc(value).replaceAll(RegExp(r'\s+'), ' ').trim();
+String normalizeTextLegacyV9(String value) =>
     value.replaceAll(RegExp(r'\s+'), ' ').trim();
 String normalizeIdentityPart(Object? value) =>
     normalizeText('${value ?? ''}').toLowerCase();
 String sha256Hex(String value) => sha256.convert(utf8.encode(value)).toString();
+
+String canonicalIdLegacyV9(String prefix, List<Object?> parts) {
+  final stable = [brain2IdentityVersion, ...parts]
+      .map((value) => normalizeTextLegacyV9('${value ?? ''}').toLowerCase())
+      .join('\u241f');
+  return '${prefix}_${sha256Hex(stable).substring(0, 24)}';
+}
 
 String canonicalId(String prefix, List<Object?> parts) {
   final stable = [brain2IdentityVersion, ...parts]

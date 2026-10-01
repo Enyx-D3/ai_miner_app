@@ -5,6 +5,9 @@ import '../../miner/miner_history_repository.dart';
 import '../../mrs/mobile_model_manager.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'attention_preferences_screen.dart';
+import 'autocontext_settings_screen.dart';
+import 'context_handoff_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Brain2Controller controller;
@@ -256,7 +259,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Context sharing',
               subtitle: 'Ask every time\nOnly the selected capsule leaves the device',
               actionLabel: 'Preview >',
-              onTap: () {},
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ContextHandoffScreen(widget.controller)),
+              ),
+            ),
+
+            GlobalContextActionTile(
+              icon: Icons.auto_awesome_outlined,
+              title: 'AutoContext',
+              subtitle: 'Bounded context suggestions · never auto-send',
+              actionLabel: 'Configure >',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AutoContextSettingsScreen()),
+              ),
+            ),
+
+            GlobalContextActionTile(
+              icon: Icons.tune_rounded,
+              title: 'Human Taste',
+              subtitle: 'Context depth, resurfacing and interruption preferences',
+              actionLabel: 'Tune >',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AttentionPreferencesScreen()),
+              ),
             ),
 
             GlobalContextActionTile(

@@ -12,6 +12,7 @@ import '../mrs/llama_mobile_model_adapter.dart';
 import '../mrs/mobile_model_manager.dart';
 import '../services/b2m_mobile_service.dart';
 import '../services/import_service.dart';
+import '../services/share_receiver_service.dart';
 import '../storage/brain2_database.dart';
 import '../storage/mutation_service.dart';
 import '../sync/g11_sync_proof.dart';
@@ -45,6 +46,8 @@ class Brain2Controller extends ChangeNotifier {
   String readerState = 'UNKNOWN';
   late String deviceId;
   ThemeMode themeMode = ThemeMode.light;
+  bool onboardingComplete = false;
+  String? pendingSharedText;
 
   Future<void> setThemeMode(ThemeMode mode) async {
     themeMode = mode;
@@ -65,6 +68,7 @@ class Brain2Controller extends ChangeNotifier {
           .listen((_) => _scheduleRefresh());
 
       final prefs = await SharedPreferences.getInstance();
+      onboardingComplete = prefs.getBool('global_context_onboarding_complete') ?? false;
       final savedTheme = prefs.getString('brain2_theme_mode') ?? 'light';
       themeMode = ThemeMode.values.firstWhere(
         (m) => m.name == savedTheme,
@@ -120,6 +124,11 @@ class Brain2Controller extends ChangeNotifier {
       );
 
       await reader.ensureReady();
+      ShareReceiverService.listen((text) {
+        pendingSharedText = text;
+        notifyListeners();
+      });
+      pendingSharedText = await ShareReceiverService().takePendingText();
       await refresh();
       loaded = true;
       error = null;
@@ -169,6 +178,18 @@ class Brain2Controller extends ChangeNotifier {
   Future<void> refresh() async {
     counts = await db.counts();
     readerState = await db.meta('reader_index_state');
+    notifyListeners();
+  }
+
+  Future<void> completeOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('global_context_onboarding_complete', true);
+    onboardingComplete = true;
+    notifyListeners();
+  }
+
+  void consumePendingShare() {
+    pendingSharedText = null;
     notifyListeners();
   }
 

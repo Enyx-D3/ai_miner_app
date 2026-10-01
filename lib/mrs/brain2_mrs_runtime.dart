@@ -84,7 +84,34 @@ class Brain2MrsRuntime {
     }
 
     trace.add('PATTERN_MEMORY');
-    await _loadSuccessFailureMemory(task);
+    final knownFailure = await _matchingFailureMemory(task);
+    if (knownFailure != null) {
+      trace.add('FAILURE_MEMORY_BRAKE');
+      trace.add('REQUIRE_TICK');
+      final now = DateTime.now().toUtc().toIso8601String();
+      final projectId = '${knownFailure['projectId'] ?? ''}';
+      final signature = '${knownFailure['failureSignature'] ?? knownFailure['id'] ?? ''}';
+      final tickId = canonicalId('tick', [projectId, 'failure-memory', signature]);
+      await mutations.upsert('ticks', {
+        'id': tickId,
+        if (projectId.isNotEmpty) 'projectId': projectId,
+        'title': 'Review known failed route',
+        'detail': 'This task overlaps a recorded failure: ${knownFailure['title'] ?? knownFailure['cause'] ?? signature}. Resolve this Tick after confirming conditions changed or choosing a different repair.',
+        'status': 'OPEN',
+        'priority': 'HIGH',
+        'actionType': 'VERIFY',
+        'createdAt': now,
+        'updatedAt': now,
+        'evidenceAtomIds': ((knownFailure['evidenceIds'] as List?) ?? const []).map((e) => '$e').toList(),
+      }, type: 'FAILURE_MEMORY_BRAKE');
+      final out = MrsRunResult(
+          runId: runId,
+          status: MrsRunStatus.failed,
+          answer: 'Known failed route detected. Global Context created a VERIFY Tick instead of blindly repeating it.',
+          trace: trace);
+      await _persist(out, task, databox);
+      return out;
+    }
 
     trace.add('COGNITIVE_R1');
     final operation = _cognitiveR1(task, databox);
@@ -219,10 +246,20 @@ class Brain2MrsRuntime {
     return bestScore >= .16 ? best : null;
   }
 
-  Future<void> _loadSuccessFailureMemory(String task) async {
-    await db.records('reasoningTrajectories',
-        orderBy: 'updated_at DESC', limit: 24);
-    await db.records('failureMemory', orderBy: 'updated_at DESC', limit: 24);
+  Future<Map<String, Object?>?> _matchingFailureMemory(String task) async {
+    await db.records('reasoningTrajectories', orderBy: 'updated_at DESC', limit: 24);
+    final failures = await db.records('failureMemory', orderBy: 'updated_at DESC', limit: 64);
+    final taskTerms = normalizeText(task).toLowerCase().split(RegExp(r'[^a-z0-9]+')).where((e) => e.length >= 3).toSet();
+    Map<String, Object?>? best;
+    var bestScore = 0.0;
+    for (final failure in failures) {
+      final text = normalizeText([failure['title'], failure['cause'], failure['knownBadOperation'], ...((failure['boundaryConditions'] as List?) ?? const [])].join(' ')).toLowerCase();
+      final terms = text.split(RegExp(r'[^a-z0-9]+')).where((e) => e.length >= 3).toSet();
+      if (taskTerms.isEmpty || terms.isEmpty) continue;
+      final score = taskTerms.intersection(terms).length / taskTerms.union(terms).length;
+      if (score > bestScore) { bestScore = score; best = failure; }
+    }
+    return bestScore >= .20 ? best : null;
   }
 
   String _cognitiveR1(String task, Map<String, Object?> databox) {

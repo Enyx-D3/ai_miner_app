@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../ui/screens/ask_screen.dart';
+import '../ui/screens/attention_preferences_screen.dart';
+import '../ui/screens/context_handoff_screen.dart';
+import '../ui/screens/onboarding_screen.dart';
 import '../ui/screens/conversations_screen.dart';
 import '../ui/screens/dashboard_screen.dart';
 import '../ui/screens/decisions_screen.dart';
@@ -104,7 +107,13 @@ class _Brain2AppState extends State<Brain2App> {
   }
 
   void _controllerChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final shared = controller.pendingSharedText;
+    if (shared != null && shared.isNotEmpty && page != 'handoff') {
+      setState(() => page = 'handoff');
+    } else {
+      setState(() {});
+    }
   }
 
   Widget _screen() {
@@ -156,6 +165,10 @@ class _Brain2AppState extends State<Brain2App> {
         return DevicesScreen(controller);
       case 'operations':
         return OperationsScreen(controller);
+      case 'handoff':
+        return ContextHandoffScreen(controller, initialTask: controller.pendingSharedText, onConsumed: controller.consumePendingShare);
+      case 'attention':
+        return const AttentionPreferencesScreen();
       case 'settings':
         return SettingsScreen(controller);
       default:
@@ -246,6 +259,9 @@ class _Brain2AppState extends State<Brain2App> {
                 ),
               ),
             );
+          }
+          if (!controller.onboardingComplete) {
+            return GlobalContextOnboardingScreen(controller);
           }
           return Scaffold(
               key: _scaffoldKey,

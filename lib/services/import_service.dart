@@ -122,10 +122,18 @@ class Brain2ImportService {
     Future<String> sourceIdFor(String provider) async {
       final existing = sourceIds[provider];
       if (existing != null) return existing;
-      final sourceId = canonicalId(
+      final canonicalSourceId = canonicalId(
         'src',
         [provider, sourceLabel, 'archive'],
       );
+      final legacySourceId = canonicalIdLegacyV9(
+        'src',
+        [provider, sourceLabel, 'archive'],
+      );
+      final sourceId = canonicalSourceId != legacySourceId &&
+              await db.getRecord('sources', legacySourceId) != null
+          ? legacySourceId
+          : canonicalSourceId;
       await mutations.upsert(
         'sources',
         {
@@ -165,10 +173,18 @@ class Brain2ImportService {
       final title = normalizeText(
         '${conversationRaw['title'] ?? 'Conversation ${i + 1}'}',
       );
-      final conversationId = canonicalId(
+      final canonicalConversationId = canonicalId(
         'conv',
         [provider, externalId.isEmpty ? title : externalId],
       );
+      final legacyConversationId = canonicalIdLegacyV9(
+        'conv',
+        [provider, externalId.isEmpty ? title : externalId],
+      );
+      final conversationId = canonicalConversationId != legacyConversationId &&
+              await db.getRecord('conversations', legacyConversationId) != null
+          ? legacyConversationId
+          : canonicalConversationId;
       final messages = _messages(
         conversationRaw,
         conversationId,

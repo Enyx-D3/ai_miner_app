@@ -4,6 +4,7 @@ import '../../app/brain2_controller.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'project_detail_screen.dart';
+import 'resume_screen.dart';
 
 class ProjectsScreen extends StatefulWidget {
   final Brain2Controller c;
@@ -60,7 +61,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) =>
-                            ProjectDetailScreen(widget.c, activeProject),
+                            ResumeProjectScreen(widget.c, activeProject),
                       ),
                     );
                   }
@@ -113,7 +114,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) =>
-                            ProjectDetailScreen(widget.c, record),
+                            ResumeProjectScreen(widget.c, record),
                       ),
                     ),
                   );

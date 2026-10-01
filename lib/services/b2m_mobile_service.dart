@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../core/contracts.dart';
 import '../core/identity.dart';
 import '../storage/brain2_database.dart';
+import '../sync/sync_contract.dart';
 
 class B2MImportResult {
   final String memoryRoot;
@@ -69,7 +70,7 @@ class B2MMobileService {
     };
     final map = payload['tables'] as Map<String, Object?>;
     for (final table in tables) {
-      map[table] = await db.records(table);
+      map[brain2WireTableForLocal(table)] = await db.records(table);
     }
     final hash = sha256Hex(canonicalJson(payload));
     payload['hash'] = hash;
@@ -149,7 +150,7 @@ class B2MMobileService {
     var recordCount = 0;
     var tableCount = 0;
     for (final table in tables) {
-      final raw = tableMap[table];
+      final raw = tableMap[brain2WireTableForLocal(table)] ?? tableMap[table];
       if (raw is! List || raw.isEmpty) continue;
       final records = <Map<String, Object?>>[];
       for (final item in raw) {
