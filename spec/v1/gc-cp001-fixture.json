@@ -1,0 +1,170 @@
+{
+  "format": "GC_CP001_FIXTURE",
+  "version": 1,
+  "identityVersion": "B2_ID_V9_ASIF_READER",
+  "schemaVersion": 10,
+  "unicodeIdentityVectors": [
+    {
+      "prefix": "x",
+      "parts": [
+        "Ａ",
+        " Å  "
+      ],
+      "expected": "x_d1a8a5e267653ff721231d09"
+    },
+    {
+      "prefix": "x",
+      "parts": [
+        "ChatGPT",
+        " Project  Foo "
+      ],
+      "expected": "x_672c665657ed937a93a9eb87"
+    },
+    {
+      "prefix": "msg",
+      "parts": [
+        "chatgpt",
+        "conv_1",
+        "structural",
+        null,
+        null,
+        1,
+        "user",
+        "Café"
+      ],
+      "expected": "msg_fc15f3790e150f38c303abc7"
+    }
+  ],
+  "providers": [
+    "chatgpt",
+    "claude",
+    "gemini"
+  ],
+  "truthLifecycle": [
+    {
+      "id": "truth_current",
+      "status": "CURRENT",
+      "kind": "decision",
+      "text": "Use bounded context packages."
+    },
+    {
+      "id": "truth_old",
+      "status": "SUPERSEDED",
+      "kind": "decision",
+      "text": "Send the full archive."
+    },
+    {
+      "id": "truth_conflict",
+      "status": "CONFLICTING",
+      "kind": "constraint",
+      "text": "Sharing permission is unresolved."
+    }
+  ],
+  "sharedStateFamilies": [
+    "mrsRuns",
+    "intelligenceSnapshots",
+    "wikiSnapshots",
+    "notebookSnapshots"
+  ],
+  "mutationOrigins": [
+    "web_fixture_device",
+    "android_fixture_device"
+  ],
+  "handoffPolicy": {
+    "fullArchiveIncluded": false,
+    "askEveryTime": true,
+    "requiredR1Signal": "ALLOW",
+    "resultWritePolicy": "PROPOSE_THEN_VERIFY"
+  },
+  "resumeStablePayload": {
+    "format": "GLOBAL_CONTEXT_RESUME",
+    "version": 1,
+    "memoryRoot": "b2m_fixture_root",
+    "projectId": "prj_fixture",
+    "projectName": "Fixture Project",
+    "projectAliases": [
+      "Fixture Alias"
+    ],
+    "goal": "Continue from the verified checkpoint.",
+    "currentTruth": [
+      {
+        "id": "truth_current",
+        "kind": "decision",
+        "text": "Use bounded context packages.",
+        "confidence": 1,
+        "updatedAt": "2026-10-01T00:00:00Z",
+        "evidenceAtomIds": [
+          "atom_1"
+        ]
+      }
+    ],
+    "openTicks": [
+      {
+        "id": "tick_1",
+        "title": "Approve handoff",
+        "detail": "Review selected context.",
+        "priority": "HIGH",
+        "evidenceAtomIds": [
+          "atom_1"
+        ]
+      }
+    ],
+    "knownFailures": [
+      {
+        "id": "failure_1",
+        "failureSignature": "sig_1",
+        "title": "Full archive dump",
+        "cause": "Too much irrelevant context",
+        "boundaryConditions": [
+          "same task scope"
+        ],
+        "occurrenceCount": 1
+      }
+    ],
+    "recentChanges": [
+      {
+        "id": "truth_old",
+        "status": "SUPERSEDED",
+        "kind": "decision",
+        "text": "Send the full archive.",
+        "updatedAt": "2026-09-30T00:00:00Z"
+      }
+    ],
+    "nextAction": {
+      "kind": "TICK",
+      "text": "Approve handoff",
+      "refId": "tick_1"
+    },
+    "evidenceRefs": [
+      "atom_1"
+    ]
+  },
+  "resumeStableHash": "3975ea80e662822792d785ceab1c7c5534b9e11f1d359577e50ddf3141e84df5",
+  "contextStablePayload": {
+    "format": "GLOBAL_CONTEXT_PACKAGE",
+    "version": 1,
+    "memoryRoot": "b2m_fixture_root",
+    "projectId": "prj_fixture",
+    "projectName": "Fixture Project",
+    "task": "Continue implementation.",
+    "resumeCapsuleHash": "3975ea80e662822792d785ceab1c7c5534b9e11f1d359577e50ddf3141e84df5",
+    "currentTruthIds": [
+      "truth_current"
+    ],
+    "openTickIds": [
+      "tick_1"
+    ],
+    "failureSignatures": [
+      "sig_1"
+    ],
+    "compilerSupplementHash": "supplement_fixture_hash",
+    "policy": {
+      "bounded": true,
+      "fullArchiveIncluded": false,
+      "askEveryTime": true,
+      "resultWritePolicy": "PROPOSE_THEN_VERIFY",
+      "currentTruthWritePolicy": "R1_OR_TICK_AFTER_VERIFY"
+    }
+  },
+  "contextStableHash": "1f8dfb4b67b35bba57fdcedbd72928f4fd03cd7559fc8208eb6e4de6b5a09ce1"
+}

@@ -121,6 +121,7 @@ class B2JobService {
       <String, Object?>{
         'id': id,
         'type': 'B2JOB',
+        if (projectId != null) 'projectId': projectId,
         'payload': jsonEncode(job),
         'createdAt': now,
         'hash': sha256Hex(canonicalJson(job)),

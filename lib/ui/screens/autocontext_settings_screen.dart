@@ -68,7 +68,8 @@ class _AutoContextSettingsScreenState extends State<AutoContextSettingsScreen> {
               value: scope,
               decoration: const InputDecoration(labelText: 'Default scope'),
               items: const [
-                DropdownMenuItem(value: 'project', child: Text('Current project')),
+                DropdownMenuItem(
+                    value: 'project', child: Text('Current project')),
                 DropdownMenuItem(value: 'all', child: Text('All local memory')),
               ],
               onChanged: enabled
@@ -95,13 +96,15 @@ class _AutoContextSettingsScreenState extends State<AutoContextSettingsScreen> {
                 GlobalContextActionTile(
                   icon: Icons.visibility_outlined,
                   title: 'Inspect before send',
-                  subtitle: 'The exact outbound capsule is always shown before approval.',
+                  subtitle:
+                      'The exact outbound capsule is always shown before approval.',
                   actionLabel: '',
                 ),
                 GlobalContextActionTile(
                   icon: Icons.lock_outline,
                   title: 'No full-archive injection',
-                  subtitle: 'Only the selected bounded context package can leave the device.',
+                  subtitle:
+                      'Only the selected bounded context package can leave the device.',
                   actionLabel: '',
                 ),
               ],
@@ -111,3 +114,4 @@ class _AutoContextSettingsScreenState extends State<AutoContextSettingsScreen> {
           ],
         ),
       );
+}

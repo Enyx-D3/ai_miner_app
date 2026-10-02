@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../asif/asif_reader_core.dart';
 import '../core/contracts.dart';
 import '../core/identity.dart';
+import '../core/r1_authority.dart';
 import '../jobs/b2_job_service.dart';
 import '../storage/brain2_database.dart';
 import '../storage/mutation_service.dart';
@@ -402,6 +403,7 @@ class GlobalContextService {
   }) async {
     final now = DateTime.now().toUtc().toIso8601String();
     final outboundHash = sha256Hex(outbound);
+    final r1Authority = requireR1Allow(issueUserR1Allow(action: 'GLOBAL_CONTEXT_HANDOFF', scope: '${package['projectId']}:$destination:${package['packageHash']}', reason: 'User explicitly approved this exact bounded outbound package.', evidenceRefs: ['${package['packageHash']}', outboundHash]), action: 'GLOBAL_CONTEXT_HANDOFF', scope: '${package['projectId']}:$destination:${package['packageHash']}');
     final core = <String, Object?>{
       'format': 'GLOBAL_CONTEXT_HANDOFF',
       'version': 1,
@@ -412,9 +414,12 @@ class GlobalContextService {
       'outboundHash': outboundHash,
       'sourceSurface': sourceSurface,
       'consent': 'EXPLICIT_USER_ACTION',
+      'r1Signal': r1Authority.signal.wire,
+      'r1Hash': r1Authority.hash,
     };
     final receipt = <String, Object?>{
       ...core,
+      'r1Authority': r1Authority.toJson(),
       'id': canonicalId('gch', [
         package['memoryRoot'],
         package['projectId'],
