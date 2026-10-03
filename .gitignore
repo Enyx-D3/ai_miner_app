@@ -48,3 +48,9 @@ app.*.map.json
 *.pre_*
 *backup*
 native/contextvault/build-android-arm64/
+
+# Global Context Phase 4: preserve local archaeology/stabilization backups,
+# but never track them in release branches.
+.brain2_*_backup_*/
+*.bak
+*.old

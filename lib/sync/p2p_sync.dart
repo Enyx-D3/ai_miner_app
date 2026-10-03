@@ -6,6 +6,8 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../core/contracts.dart';
 import '../core/identity.dart';
+import '../core/current_truth_firewall.dart';
+import '../core/r1_authority.dart';
 import '../models/mutation.dart';
 import '../storage/brain2_database.dart';
 import 'g11_sync_proof.dart';
@@ -111,6 +113,12 @@ class Brain2P2PSync {
   bool _merging = false;
   String _mergePhase = 'IDLE';
   int _mergeSeedOrdinal = 0;
+  String _mergeId = '';
+  String _mergeSourceRoot = '';
+  String _mergeTargetRoot = '';
+  String _mergeSourceDeviceId = '';
+  String _mergeTargetDeviceId = '';
+  Brain2R1Receipt? _mergeAuthority;
   final Brain2ReplayWindow _signalReplay = Brain2ReplayWindow();
   final Map<String, _Brain2FrameAssembly> _incomingFrames = {};
   final Map<String, Future<void>> _incomingWork = {};
@@ -324,6 +332,12 @@ class Brain2P2PSync {
       _merging = false;
       _mergePhase = 'IDLE';
       _mergeSeedOrdinal = 0;
+      _mergeId = '';
+      _mergeSourceRoot = '';
+      _mergeTargetRoot = '';
+      _mergeSourceDeviceId = '';
+      _mergeTargetDeviceId = '';
+      _mergeAuthority = null;
       final channel = _channels.remove(peer);
       if (channel != null) await channel.close();
       final pc = _pcs.remove(peer);
@@ -342,14 +356,12 @@ class Brain2P2PSync {
   }
 
   void _pruneTransportFrames(String peer) {
-    final cutoff =
-        DateTime.now().millisecondsSinceEpoch - brain2SyncFrameTtlMs;
+    final cutoff = DateTime.now().millisecondsSinceEpoch - brain2SyncFrameTtlMs;
     final prefix = '$peer::';
     final expired = _incomingFrames.entries
         .where(
           (entry) =>
-              entry.key.startsWith(prefix) &&
-              entry.value.updatedAtMs < cutoff,
+              entry.key.startsWith(prefix) && entry.value.updatedAtMs < cutoff,
         )
         .map((entry) => entry.key)
         .toList(growable: false);
@@ -486,6 +498,38 @@ class Brain2P2PSync {
     // usable. If transport dropped, reconnect first and wait for OPEN.
     await _ensureOpenChannel(peer);
 
+    final sourceRoot = await db.memoryRoot();
+    final mergeId = canonicalId('merge', [
+      sourceRoot,
+      targetRoot,
+      deviceId,
+      peer,
+      DateTime.now().toUtc().microsecondsSinceEpoch,
+    ]);
+    final mergeContext = currentTruthMergeContext(
+      sourceRoot: sourceRoot,
+      targetRoot: targetRoot,
+      sourceDeviceId: deviceId,
+      targetDeviceId: peer,
+      mergeId: mergeId,
+    );
+    final mergeAuthority = issueUserR1Allow(
+      action: brain2CurrentTruthR1Action,
+      scope: mergeContext.scope,
+      reason: 'User explicitly approved merging two Brain2 memories.',
+      evidenceRefs: [sourceRoot, targetRoot],
+    );
+    requireVerifiedR1Allow(mergeAuthority,
+        action: brain2CurrentTruthR1Action,
+        scope: mergeContext.scope,
+        minVersion: 2,
+        authoritySource: 'EXPLICIT_USER_ACTION');
+    _mergeId = mergeId;
+    _mergeSourceRoot = sourceRoot;
+    _mergeTargetRoot = targetRoot;
+    _mergeSourceDeviceId = deviceId;
+    _mergeTargetDeviceId = peer;
+    _mergeAuthority = mergeAuthority;
     _merging = true;
     _mergePhase = 'REQUESTED';
     _mergeSeedOrdinal = 0;
@@ -497,7 +541,12 @@ class Brain2P2PSync {
     try {
       await _send(peer, {
         'type': 'merge_request',
+        'sourceRoot': sourceRoot,
         'targetRoot': targetRoot,
+        'sourceDeviceId': deviceId,
+        'targetDeviceId': peer,
+        'mergeId': mergeId,
+        'r1Authority': mergeAuthority.toJson(),
         'localSummary': await _summary(),
       });
     } catch (error) {
@@ -817,7 +866,8 @@ class Brain2P2PSync {
     switch ('${message['type']}') {
       case 'hello':
         if (_merging) {
-          throw StateError('Brain2 hello is not allowed during an active merge');
+          throw StateError(
+              'Brain2 hello is not allowed during an active merge');
         }
         if (message['summary'] is! Map) {
           throw StateError('Invalid Brain2 hello summary');
@@ -893,7 +943,8 @@ class Brain2P2PSync {
 
       case 'sync_request':
         if (_merging) {
-          throw StateError('Sync request is not allowed during an active merge');
+          throw StateError(
+              'Sync request is not allowed during an active merge');
         }
         _scheduleFlush(peer, immediate: true);
         break;
@@ -907,6 +958,29 @@ class Brain2P2PSync {
         if (remote == null || targetRoot != '${remote['memoryRoot']}') {
           throw StateError('Unexpected Brain2 merge target.');
         }
+        final receipt = message['r1Authority'] is Map
+            ? Brain2R1Receipt.fromJson(
+                (message['r1Authority'] as Map).cast<String, Object?>())
+            : null;
+        if (_mergeAuthority == null ||
+            '${message['mergeId'] ?? ''}' != _mergeId ||
+            receipt?.hash != _mergeAuthority!.hash ||
+            '${message['sourceRoot'] ?? ''}' != _mergeSourceRoot ||
+            '${message['sourceDeviceId'] ?? ''}' != _mergeSourceDeviceId ||
+            '${message['targetDeviceId'] ?? ''}' != _mergeTargetDeviceId) {
+          throw StateError('Brain2 merge authority/session mismatch.');
+        }
+        final mergeContext = currentTruthMergeContext(
+            sourceRoot: _mergeSourceRoot,
+            targetRoot: _mergeTargetRoot,
+            sourceDeviceId: _mergeSourceDeviceId,
+            targetDeviceId: _mergeTargetDeviceId,
+            mergeId: _mergeId);
+        requireVerifiedR1Allow(receipt!,
+            action: brain2CurrentTruthR1Action,
+            scope: mergeContext.scope,
+            minVersion: 2,
+            authoritySource: 'EXPLICIT_USER_ACTION');
         final oldRoot = await db.memoryRoot();
         await db.beginMemoryMerge(
           targetRoot,
@@ -920,7 +994,15 @@ class Brain2P2PSync {
           'Merge accepted. Receiving the web replica into this phone…',
           peer: peer,
         );
-        await _send(peer, {'type': 'merge_ready', 'targetRoot': targetRoot});
+        await _send(peer, {
+          'type': 'merge_ready',
+          'sourceRoot': _mergeSourceRoot,
+          'targetRoot': targetRoot,
+          'sourceDeviceId': _mergeSourceDeviceId,
+          'targetDeviceId': _mergeTargetDeviceId,
+          'mergeId': _mergeId,
+          'r1Authority': _mergeAuthority!.toJson()
+        });
         break;
 
       case 'merge_seed_chunk':
@@ -930,6 +1012,15 @@ class Brain2P2PSync {
         final targetRoot = '${message['targetRoot'] ?? ''}';
         if (targetRoot != await db.memoryRoot()) {
           throw StateError('Brain2 merge seed root mismatch');
+        }
+        final receipt = message['r1Authority'] is Map
+            ? Brain2R1Receipt.fromJson(
+                (message['r1Authority'] as Map).cast<String, Object?>())
+            : null;
+        if (_mergeAuthority == null ||
+            '${message['mergeId'] ?? ''}' != _mergeId ||
+            receipt?.hash != _mergeAuthority!.hash) {
+          throw StateError('Brain2 merge seed authority mismatch');
         }
         final ordinal = message['ordinal'] is num
             ? (message['ordinal'] as num).toInt()
@@ -953,7 +1044,12 @@ class Brain2P2PSync {
         final records = decodedRecords
             .map((e) => (e as Map).cast<String, Object?>())
             .toList(growable: false);
-        await db.applyMergeChunk(targetRoot, wireTable, records);
+        await db.applyMergeChunk(targetRoot, wireTable, records,
+            r1Authority: _mergeAuthority,
+            sourceRoot: _mergeSourceRoot,
+            sourceDeviceId: _mergeSourceDeviceId,
+            targetDeviceId: _mergeTargetDeviceId,
+            mergeId: _mergeId);
         _mergeSeedOrdinal += 1;
         _status(
           Brain2P2PStage.bootstrapping,
@@ -969,6 +1065,15 @@ class Brain2P2PSync {
         final targetRoot = '${message['targetRoot'] ?? ''}';
         if (targetRoot != await db.memoryRoot()) {
           throw StateError('Brain2 merge root changed unexpectedly');
+        }
+        final completeReceipt = message['r1Authority'] is Map
+            ? Brain2R1Receipt.fromJson(
+                (message['r1Authority'] as Map).cast<String, Object?>())
+            : null;
+        if (_mergeAuthority == null ||
+            '${message['mergeId'] ?? ''}' != _mergeId ||
+            completeReceipt?.hash != _mergeAuthority!.hash) {
+          throw StateError('Brain2 merge seed completion authority mismatch');
         }
         _status(
           Brain2P2PStage.bootstrapping,
@@ -988,11 +1093,26 @@ class Brain2P2PSync {
         if (targetRoot != await db.memoryRoot()) {
           throw StateError('Brain2 merge completion root mismatch');
         }
+        final receipt = message['r1Authority'] is Map
+            ? Brain2R1Receipt.fromJson(
+                (message['r1Authority'] as Map).cast<String, Object?>())
+            : null;
+        if (_mergeAuthority == null ||
+            '${message['mergeId'] ?? ''}' != _mergeId ||
+            receipt?.hash != _mergeAuthority!.hash) {
+          throw StateError('Brain2 merge completion authority mismatch');
+        }
         await db.finalizeMemoryMerge();
         _memoryConflicts.remove(peer);
         _merging = false;
         _mergePhase = 'IDLE';
         _mergeSeedOrdinal = 0;
+        _mergeId = '';
+        _mergeSourceRoot = '';
+        _mergeTargetRoot = '';
+        _mergeSourceDeviceId = '';
+        _mergeTargetDeviceId = '';
+        _mergeAuthority = null;
         _status(
           Brain2P2PStage.syncingDeltas,
           'Both memories merged. Rechecking ordered deltas…',
@@ -1071,7 +1191,16 @@ class Brain2P2PSync {
           }
           _bootstrapPeerMaxSequence[peer] = maxSequence;
         }
-        await db.applyBootstrapChunk(memoryRoot, wireTable, records);
+        final bootstrapReceipt = message['r1Authority'] is Map
+            ? Brain2R1Receipt.fromJson(
+                (message['r1Authority'] as Map).cast<String, Object?>())
+            : null;
+        await db.applyBootstrapChunk(memoryRoot, wireTable, records,
+            r1Authority: bootstrapReceipt,
+            sourceDeviceId: peer,
+            targetDeviceId: deviceId,
+            ordinal: ordinal,
+            chunkHash: expected);
         _bootstrapExpectedOrdinal[peer] = ordinal + 1;
 
         // Receiver-side backpressure:
@@ -1306,6 +1435,27 @@ class Brain2P2PSync {
             ordinal,
             recordsJson,
           );
+          final currentTruths = wireTable == 'truths'
+              ? current
+                  .where((record) => '${record['status'] ?? ''}' == 'CURRENT')
+                  .toList(growable: false)
+              : const <Map<String, Object?>>[];
+          final bootstrapContext = currentTruthBootstrapContext(
+              memoryRoot: root,
+              sourceDeviceId: deviceId,
+              targetDeviceId: peer,
+              ordinal: ordinal,
+              chunkHash: hash);
+          final bootstrapAuthority = currentTruths.isEmpty
+              ? null
+              : issuePolicyR1Allow(
+                  action: brain2CurrentTruthR1Action,
+                  scope: bootstrapContext.scope,
+                  reason:
+                      'Same-root bootstrap transfers existing canonical Current Truth to an empty trusted replica.',
+                  evidenceRefs:
+                      currentTruths.map((truth) => '${truth['id'] ?? ''}'),
+                );
           await _send(peer, {
             'type': 'bootstrap_chunk',
             'memoryRoot': root,
@@ -1314,6 +1464,8 @@ class Brain2P2PSync {
             'hashVersion': 3,
             'ordinal': ordinal,
             'chunkHash': hash,
+            if (bootstrapAuthority != null)
+              'r1Authority': bootstrapAuthority.toJson(),
           });
           ordinal++;
           chunk = <Map<String, Object?>>[];
@@ -1402,9 +1554,17 @@ class Brain2P2PSync {
           if (chunk.isEmpty) return;
           final current = List<Map<String, Object?>>.from(chunk);
           final recordsJson = jsonEncode(current);
+          if (_mergeAuthority == null || _mergeId.isEmpty) {
+            throw StateError('Missing active Brain2 merge authority.');
+          }
           await _send(peer, {
             'type': 'merge_return_chunk',
+            'sourceRoot': _mergeSourceRoot,
             'targetRoot': targetRoot,
+            'sourceDeviceId': _mergeSourceDeviceId,
+            'targetDeviceId': _mergeTargetDeviceId,
+            'mergeId': _mergeId,
+            'r1Authority': _mergeAuthority!.toJson(),
             'table': wireTable,
             'ordinal': ordinal++,
             'recordsJson': recordsJson,
@@ -1435,9 +1595,17 @@ class Brain2P2PSync {
         await Future<void>.delayed(Duration.zero);
       }
     }
+    if (_mergeAuthority == null || _mergeId.isEmpty) {
+      throw StateError('Missing active Brain2 merge authority.');
+    }
     await _send(peer, {
       'type': 'merge_return_complete',
+      'sourceRoot': _mergeSourceRoot,
       'targetRoot': targetRoot,
+      'sourceDeviceId': _mergeSourceDeviceId,
+      'targetDeviceId': _mergeTargetDeviceId,
+      'mergeId': _mergeId,
+      'r1Authority': _mergeAuthority!.toJson(),
     });
   }
 
@@ -1518,6 +1686,10 @@ class Brain2P2PSync {
         writes: writes,
         deletes: deletes,
         primaryTable: payload['primaryTable'] as String?,
+        r1Authority: payload['r1Authority'] is Map
+            ? Brain2R1Receipt.fromJson(
+                (payload['r1Authority'] as Map).cast<String, Object?>())
+            : null,
       ),
       parentMutationIds:
           (json['parentMutationIds'] as List? ?? []).map((e) => '$e').toList(),

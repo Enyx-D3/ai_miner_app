@@ -32,9 +32,11 @@ class MiningCompleteScreen extends StatelessWidget {
       }
       return;
     }
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'Brain2 AI Miner digest.zip',
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        subject: 'Brain2 AI Miner digest.zip',
+      ),
     );
   }
 
@@ -115,8 +117,8 @@ class MiningCompleteScreen extends StatelessWidget {
               child: ListView.separated(
                 controller: scrollController,
                 itemCount: run.generatedFiles.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 56, color: Brain2Theme.borderLight),
+                separatorBuilder: (_, __) => const Divider(
+                    height: 1, indent: 56, color: Brain2Theme.borderLight),
                 itemBuilder: (_, index) => ListTile(
                   leading: Container(
                     width: 36,
@@ -198,9 +200,11 @@ class MiningCompleteScreen extends StatelessWidget {
           _Section(
             title: 'Brain2 Memory',
             rows: [
-              _Pair('Canonical conversations', formatCount(run.conversationsImported)),
+              _Pair('Canonical conversations',
+                  formatCount(run.conversationsImported)),
               _Pair('Canonical messages', formatCount(run.messagesImported)),
-              _Pair('ContextVault', run.nativeContextVaultUsed ? 'Native C++' : 'Fallback'),
+              _Pair('ContextVault',
+                  run.nativeContextVaultUsed ? 'Native C++' : 'Fallback'),
               const _Pair('Atomization', 'G + F + I + B250'),
               const _Pair('Current Truth', 'Reconciled'),
               const _Pair('Reader', '.ASIF / RapidRetrieve'),
@@ -231,10 +235,14 @@ class MiningCompleteScreen extends StatelessWidget {
           _Section(
             title: 'Performance',
             rows: [
-              _Pair('ZIP + JSON extraction', formatDurationMs(run.extractionTimeMs)),
-              _Pair('ContextVault C++', formatDurationMs(run.nativeProcessingTimeMs)),
-              _Pair('Markdown + output ZIP', formatDurationMs(run.outputZipTimeMs)),
-              _Pair('Brain2 intelligence import', formatDurationMs(run.intelligenceImportTimeMs)),
+              _Pair('ZIP + JSON extraction',
+                  formatDurationMs(run.extractionTimeMs)),
+              _Pair('ContextVault C++',
+                  formatDurationMs(run.nativeProcessingTimeMs)),
+              _Pair('Markdown + output ZIP',
+                  formatDurationMs(run.outputZipTimeMs)),
+              _Pair('Brain2 intelligence import',
+                  formatDurationMs(run.intelligenceImportTimeMs)),
               _Pair('Total', formatDurationMs(run.totalTimeMs)),
             ],
           ),
@@ -247,7 +255,8 @@ class MiningCompleteScreen extends StatelessWidget {
               backgroundColor: Brain2Theme.brandBlue,
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               textStyle: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -259,7 +268,8 @@ class MiningCompleteScreen extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
               side: const BorderSide(color: Brain2Theme.border),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               foregroundColor: Brain2Theme.textPrimary,
               textStyle: const TextStyle(fontWeight: FontWeight.w700),
             ),
@@ -272,7 +282,8 @@ class MiningCompleteScreen extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
               side: const BorderSide(color: Brain2Theme.border),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
               foregroundColor: Brain2Theme.textPrimary,
               textStyle: const TextStyle(fontWeight: FontWeight.w700),
             ),

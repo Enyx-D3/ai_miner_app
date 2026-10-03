@@ -76,7 +76,7 @@ class _AttentionPreferencesScreenState
               onChanged: (v) => setState(() => reminders = v),
             ),
             DropdownButtonFormField<String>(
-              value: detail,
+              initialValue: detail,
               decoration: const InputDecoration(labelText: 'Default detail'),
               items: const [
                 DropdownMenuItem(value: 'compact', child: Text('Compact')),

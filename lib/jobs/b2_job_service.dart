@@ -136,8 +136,9 @@ class B2JobService {
       throw ArgumentError('Unsupported B2RESULT.');
     }
     final version = (result['version'] as num?)?.toInt() ?? 0;
-    if (version != 1 && version != 2)
+    if (version != 1 && version != 2) {
       throw ArgumentError('Unsupported B2RESULT version.');
+    }
     final jobId = '${result['jobId'] ?? ''}';
     final evidenceIds = ((result['evidenceIds'] as List?) ?? const [])
         .map((e) => '$e')
@@ -181,9 +182,11 @@ class B2JobService {
           break;
         }
       }
-      if (!exists)
+      if (!exists) {
         missing.add(id);
-      else if (!allowed.contains(id)) outside.add(id);
+      } else if (!allowed.contains(id)) {
+        outside.add(id);
+      }
     }
     final status = job == null ||
             !memoryRootMatches ||

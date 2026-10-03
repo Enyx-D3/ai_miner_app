@@ -452,8 +452,9 @@ String _detectProvider(Map<String, Object?> conversation, String? hint) {
     'platform',
     'source',
   ]);
-  if (explicit != null && explicit.isNotEmpty)
+  if (explicit != null && explicit.isNotEmpty) {
     return _normalizeProvider(explicit);
+  }
   if (conversation['mapping'] is Map) return 'chatgpt';
   if (conversation['chat_messages'] is List) return 'claude';
   final messages = conversation['messages'];

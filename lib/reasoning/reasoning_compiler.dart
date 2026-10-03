@@ -32,11 +32,13 @@ class MobileReasoningCompiler {
   List<String> _boundaryConditions(Map<String, Object?> databox) {
     final out = <String>{};
     final conflictCount = (databox['conflictCount'] as num?)?.toInt() ?? 0;
-    if (conflictCount > 0)
+    if (conflictCount > 0) {
       out.add('Databox contains $conflictCount conflicting truth record(s)');
+    }
     final route = '${databox['retrievalRoute'] ?? databox['route'] ?? ''}';
-    if (route.contains('B_250_CHUNK'))
+    if (route.contains('B_250_CHUNK')) {
       out.add('B250 bounded-context fallback may be required');
+    }
     final evidenceCount = ((databox['evidence'] as List?) ?? const []).length;
     if (evidenceCount < 2) out.add('Sparse Databox evidence');
     return out.toList();

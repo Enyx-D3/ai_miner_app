@@ -154,14 +154,16 @@ class ResultReturnService {
 
   Future<String> approveVerifiedResult(String resultTransactionId) async {
     final tx = await db.getRecord('transactions', resultTransactionId);
-    if (tx == null || '${tx['type']}' != 'B2RESULT')
+    if (tx == null || '${tx['type']}' != 'B2RESULT') {
       throw StateError('B2RESULT transaction not found.');
+    }
     final result =
         (jsonDecode('${tx['payload']}') as Map).cast<String, Object?>();
     final verification =
         await B2JobService(db, mutations, reader).verifyResult(result);
-    if (verification.status != 'PASS')
+    if (verification.status != 'PASS') {
       throw StateError('Only provenance-PASS B2RESULT can be accepted.');
+    }
     final job = await _job('${result['jobId'] ?? ''}');
     final projectId = '${job?['projectId'] ?? tx['projectId'] ?? ''}';
     if (projectId.isEmpty) throw StateError('Result has no canonical project.');

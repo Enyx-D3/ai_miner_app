@@ -1,5 +1,6 @@
 import '../core/contracts.dart';
 import '../core/identity.dart';
+import '../core/r1_authority.dart';
 
 typedef JsonMap = Map<String, Object?>;
 
@@ -8,17 +9,21 @@ class MutationDeltaPayload {
   final Map<String, List<JsonMap>> writes;
   final Map<String, List<String>> deletes;
   final String? primaryTable;
-  const MutationDeltaPayload(
-      {this.operation = 'UPSERT',
-      required this.writes,
-      this.deletes = const {},
-      this.primaryTable});
+  final Brain2R1Receipt? r1Authority;
+  const MutationDeltaPayload({
+    this.operation = 'UPSERT',
+    required this.writes,
+    this.deletes = const {},
+    this.primaryTable,
+    this.r1Authority,
+  });
   JsonMap toJson() => {
         'version': 1,
         'operation': operation,
         'writes': writes,
         'deletes': deletes.isEmpty ? null : deletes,
-        'primaryTable': primaryTable
+        'primaryTable': primaryTable,
+        'r1Authority': r1Authority?.toJson(),
       }..removeWhere((k, v) => v == null);
 }
 

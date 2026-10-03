@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../core/contracts.dart';
+import '../core/current_truth_firewall.dart';
+import '../core/r1_authority.dart';
 import '../core/identity.dart';
 import '../models/mutation.dart';
 import '../sync/sync_contract.dart';
@@ -73,7 +76,7 @@ class Brain2Database {
 
         await d.execute('PRAGMA foreign_keys=ON');
 
-        print('Brain2 SQLite WAL: $walResult');
+        developer.log('Brain2 SQLite WAL: $walResult', name: 'Brain2Database');
       },
       onCreate: (d, v) async => _createSchema(d),
       onUpgrade: (d, oldVersion, newVersion) async {
@@ -108,10 +111,8 @@ class Brain2Database {
     final rows = await db.rawQuery('PRAGMA quick_check(1)');
     if (brain2SqliteQuickCheckOk(rows)) return;
 
-    final detail = rows
-        .expand((row) => row.values)
-        .map((value) => '$value')
-        .join('; ');
+    final detail =
+        rows.expand((row) => row.values).map((value) => '$value').join('; ');
     await _db?.close();
     _db = null;
     throw StateError(
@@ -449,7 +450,11 @@ class Brain2Database {
             operation: '${p['operation']}',
             writes: writes,
             deletes: deletes,
-            primaryTable: p['primaryTable'] as String?),
+            primaryTable: p['primaryTable'] as String?,
+            r1Authority: p['r1Authority'] is Map
+                ? Brain2R1Receipt.fromJson(
+                    (p['r1Authority'] as Map).cast<String, Object?>())
+                : null),
         parentMutationIds:
             (j['parentMutationIds'] as List? ?? []).map((e) => '$e').toList(),
         beforeHash: j['beforeHash'] as String?,
@@ -477,6 +482,15 @@ class Brain2Database {
   /// This is the mobile equivalent of the web importer's conversation-sized
   /// atomic transaction and avoids thousands of one-record SQLite commits.
   Future<void> commitLocalMutation(MutationRecord m) async {
+    requireCurrentTruthAuthorityForMutation(
+      writes: m.payload.writes,
+      receipt: m.payload.r1Authority,
+      context: currentTruthMutationContext(
+          type: m.type,
+          entityType: m.entityType,
+          entityId: m.entityId,
+          memoryRoot: m.memoryRoot),
+    );
     await db.transaction((txn) async {
       for (final entry in m.payload.writes.entries) {
         final wireTable = brain2WireTableForLocal(entry.key);
@@ -551,6 +565,15 @@ class Brain2Database {
       parents: m.parentMutationIds,
     );
     if (expected != m.hash) throw StateError('mutation envelope hash mismatch');
+    requireCurrentTruthAuthorityForMutation(
+      writes: m.payload.writes,
+      receipt: m.payload.r1Authority,
+      context: currentTruthMutationContext(
+          type: m.type,
+          entityType: m.entityType,
+          entityId: m.entityId,
+          memoryRoot: m.memoryRoot),
+    );
 
     await db.transaction((txn) async {
       for (final entry in m.payload.writes.entries) {
@@ -818,8 +841,13 @@ class Brain2Database {
   Future<void> applyBootstrapChunk(
     String memoryRoot,
     String wireTable,
-    List<Map<String, Object?>> records,
-  ) async {
+    List<Map<String, Object?>> records, {
+    Brain2R1Receipt? r1Authority,
+    String sourceDeviceId = '',
+    String targetDeviceId = '',
+    int ordinal = -1,
+    String chunkHash = '',
+  }) async {
     if (memoryRoot != await this.memoryRoot()) {
       throw StateError('bootstrap memory-root mismatch');
     }
@@ -860,6 +888,10 @@ class Brain2Database {
               writes: writes,
               deletes: deletes,
               primaryTable: p['primaryTable'] as String?,
+              r1Authority: p['r1Authority'] is Map
+                  ? Brain2R1Receipt.fromJson(
+                      (p['r1Authority'] as Map).cast<String, Object?>())
+                  : null,
             ),
             parentMutationIds: (r['parentMutationIds'] as List? ?? [])
                 .map((e) => '$e')
@@ -889,6 +921,27 @@ class Brain2Database {
         throw StateError('unsupported bootstrap table: $wireTable');
       }
       final localTable = brain2LocalTableForWire(canonicalWire);
+      if (localTable == 'truths' && containsCurrentTruthWrite(records)) {
+        if (sourceDeviceId.isEmpty ||
+            targetDeviceId.isEmpty ||
+            ordinal < 0 ||
+            chunkHash.isEmpty) {
+          throw StateError(
+              'R1 bootstrap context is required for Current Truth.');
+        }
+        requireCurrentTruthAuthority(
+          truths: records,
+          receipt: r1Authority,
+          context: currentTruthBootstrapContext(
+            memoryRoot: memoryRoot,
+            sourceDeviceId: sourceDeviceId,
+            targetDeviceId: targetDeviceId,
+            ordinal: ordinal,
+            chunkHash: chunkHash,
+          ),
+          authoritySource: 'POLICY',
+        );
+      }
       for (final record in records) {
         await _putRecordTxn(txn, localTable, record);
         await _upsertReaderDocTxn(txn, localTable, record);
@@ -977,8 +1030,13 @@ class Brain2Database {
   Future<int> applyMergeChunk(
     String targetRoot,
     String wireTable,
-    List<Map<String, Object?>> records,
-  ) async {
+    List<Map<String, Object?>> records, {
+    Brain2R1Receipt? r1Authority,
+    String sourceRoot = '',
+    String sourceDeviceId = '',
+    String targetDeviceId = '',
+    String mergeId = '',
+  }) async {
     if (targetRoot != await memoryRoot()) {
       throw StateError('merge target memory-root mismatch');
     }
@@ -988,6 +1046,26 @@ class Brain2Database {
       throw StateError('unsupported merge table: $wireTable');
     }
     final localTable = brain2LocalTableForWire(canonicalWire);
+    if (localTable == 'truths' && containsCurrentTruthWrite(records)) {
+      if (sourceRoot.isEmpty ||
+          sourceDeviceId.isEmpty ||
+          targetDeviceId.isEmpty ||
+          mergeId.isEmpty) {
+        throw StateError('R1 merge context is required for Current Truth.');
+      }
+      requireCurrentTruthAuthority(
+        truths: records,
+        receipt: r1Authority,
+        context: currentTruthMergeContext(
+          sourceRoot: sourceRoot,
+          targetRoot: targetRoot,
+          sourceDeviceId: sourceDeviceId,
+          targetDeviceId: targetDeviceId,
+          mergeId: mergeId,
+        ),
+        authoritySource: 'EXPLICIT_USER_ACTION',
+      );
+    }
     if (!mergeSnapshotTables.contains(localTable)) {
       throw StateError('table is not mergeable: $localTable');
     }

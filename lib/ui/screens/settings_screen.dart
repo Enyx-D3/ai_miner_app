@@ -200,11 +200,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Switch(
                   value: widget.controller.themeMode == ThemeMode.dark,
-                  activeColor: Brain2Theme.primaryBlueOf(context),
-                  activeTrackColor: Brain2Theme.primaryBlueOf(context).withOpacity(0.4),
+                  activeThumbColor: Brain2Theme.primaryBlueOf(context),
+                  activeTrackColor:
+                      Brain2Theme.primaryBlueOf(context).withValues(alpha: 0.4),
                   inactiveThumbColor: Brain2Theme.textSecondaryOf(context),
                   inactiveTrackColor: Brain2Theme.borderOf(context),
-                  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+                  trackOutlineColor:
+                      WidgetStateProperty.all(Colors.transparent),
                   onChanged: (val) {
                     widget.controller.setThemeMode(
                       val ? ThemeMode.dark : ThemeMode.light,
@@ -245,26 +247,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             const SizedBox(height: 14),
-
             GlobalContextActionTile(
               icon: Icons.archive_outlined,
               title: 'Local archive',
-              subtitle: 'Stored on your device\nEncryption and retention controls',
+              subtitle:
+                  'Stored on your device\nEncryption and retention controls',
               actionLabel: 'Manage >',
               onTap: () {},
             ),
-
             GlobalContextActionTile(
               icon: Icons.share_outlined,
               title: 'Context sharing',
-              subtitle: 'Ask every time\nOnly the selected capsule leaves the device',
+              subtitle:
+                  'Ask every time\nOnly the selected capsule leaves the device',
               actionLabel: 'Preview >',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => ContextHandoffScreen(widget.controller)),
+                MaterialPageRoute(
+                    builder: (_) => ContextHandoffScreen(widget.controller)),
               ),
             ),
-
             GlobalContextActionTile(
               icon: Icons.auto_awesome_outlined,
               title: 'AutoContext',
@@ -272,31 +274,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               actionLabel: 'Configure >',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AutoContextSettingsScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const AutoContextSettingsScreen()),
               ),
             ),
-
             GlobalContextActionTile(
               icon: Icons.tune_rounded,
               title: 'Human Taste',
-              subtitle: 'Context depth, resurfacing and interruption preferences',
+              subtitle:
+                  'Context depth, resurfacing and interruption preferences',
               actionLabel: 'Tune >',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AttentionPreferencesScreen()),
+                MaterialPageRoute(
+                    builder: (_) => const AttentionPreferencesScreen()),
               ),
             ),
-
             GlobalContextActionTile(
               icon: Icons.delete_sweep_outlined,
               title: 'Clean mining history',
-              subtitle: 'Stored on your device\nDelete all mining runs and cached records',
+              subtitle:
+                  'Stored on your device\nDelete all mining runs and cached records',
               actionLabel: busy ? 'Cleaning...' : 'Clean >',
               onTap: busy ? null : _clearHistory,
             ),
-
             const SizedBox(height: 8),
-
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -395,4 +397,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-

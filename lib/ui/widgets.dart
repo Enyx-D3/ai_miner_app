@@ -29,7 +29,7 @@ class GlobalContextBrandHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Brain2Theme.primaryBlue.withOpacity(0.35),
+                  color: Brain2Theme.primaryBlue.withValues(alpha: 0.35),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -866,7 +866,8 @@ class _CleanKnowledgePainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
 
-  const _CleanKnowledgePainter({required this.color, required this.strokeWidth});
+  const _CleanKnowledgePainter(
+      {required this.color, required this.strokeWidth});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -956,11 +957,16 @@ class _CleanMorePainter extends CustomPainter {
       final aToothEnd = a0 + 0.18;
       final aValleyEnd = a0 + (2 * math.pi / teeth) - 0.18;
 
-      final p0 = Offset(center.dx + rInner * math.cos(aToothStart), center.dy + rInner * math.sin(aToothStart));
-      final p1 = Offset(center.dx + rOuter * math.cos(aToothStart), center.dy + rOuter * math.sin(aToothStart));
-      final p2 = Offset(center.dx + rOuter * math.cos(aToothEnd), center.dy + rOuter * math.sin(aToothEnd));
-      final p3 = Offset(center.dx + rInner * math.cos(aToothEnd), center.dy + rInner * math.sin(aToothEnd));
-      final p4 = Offset(center.dx + rInner * math.cos(aValleyEnd), center.dy + rInner * math.sin(aValleyEnd));
+      final p0 = Offset(center.dx + rInner * math.cos(aToothStart),
+          center.dy + rInner * math.sin(aToothStart));
+      final p1 = Offset(center.dx + rOuter * math.cos(aToothStart),
+          center.dy + rOuter * math.sin(aToothStart));
+      final p2 = Offset(center.dx + rOuter * math.cos(aToothEnd),
+          center.dy + rOuter * math.sin(aToothEnd));
+      final p3 = Offset(center.dx + rInner * math.cos(aToothEnd),
+          center.dy + rInner * math.sin(aToothEnd));
+      final p4 = Offset(center.dx + rInner * math.cos(aValleyEnd),
+          center.dy + rInner * math.sin(aValleyEnd));
 
       if (i == 0) {
         path.moveTo(p0.dx, p0.dy);
@@ -989,5 +995,3 @@ class _CleanMorePainter extends CustomPainter {
   bool shouldRepaint(covariant _CleanMorePainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
 }
-
-

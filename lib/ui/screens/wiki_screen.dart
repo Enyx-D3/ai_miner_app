@@ -21,8 +21,9 @@ class _WikiScreenState extends State<WikiScreen> {
   Future<void> load() async {
     rows =
         await widget.c.db.records('wikiSnapshots', orderBy: 'updated_at DESC');
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       rows = await widget.c.db.records('truths', orderBy: 'updated_at DESC');
+    }
     if (mounted) setState(() => busy = false);
   }
 

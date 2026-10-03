@@ -12,7 +12,9 @@ const List<int> brain2GgufMagic = [0x47, 0x47, 0x55, 0x46];
 
 bool brain2HasGgufMagic(List<int> prefix) =>
     prefix.length >= brain2GgufMagic.length &&
-    List.generate(brain2GgufMagic.length, (index) => prefix[index] == brain2GgufMagic[index]).every((value) => value);
+    List.generate(brain2GgufMagic.length,
+            (index) => prefix[index] == brain2GgufMagic[index])
+        .every((value) => value);
 
 int brain2ModelMaxAcceptedBytes(int expectedBytes) {
   if (expectedBytes <= 0) return 0;
@@ -22,7 +24,8 @@ int brain2ModelMaxAcceptedBytes(int expectedBytes) {
 bool brain2ContentRangeStartsAt(String? header, int expectedOffset) {
   if (expectedOffset <= 0) return true;
   if (header == null || header.isEmpty) return false;
-  final match = RegExp(r'^bytes\s+(\d+)-(\d+)/(\d+|\*)$', caseSensitive: false).firstMatch(header.trim());
+  final match = RegExp(r'^bytes\s+(\d+)-(\d+)/(\d+|\*)$', caseSensitive: false)
+      .firstMatch(header.trim());
   if (match == null) return false;
   return int.tryParse(match.group(1) ?? '') == expectedOffset;
 }
@@ -68,7 +71,7 @@ class MobileModelManager {
   Future<Directory> _modelsDir() async {
     final root = _directoryProvider == null
         ? await getApplicationSupportDirectory()
-        : await _directoryProvider!();
+        : await _directoryProvider();
     final dir = Directory(p.join(root.path, 'brain2', 'models'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
@@ -185,9 +188,11 @@ class MobileModelManager {
 
     if (offset > 0 &&
         response.statusCode == 206 &&
-        !brain2ContentRangeStartsAt(response.headers['content-range'], offset)) {
+        !brain2ContentRangeStartsAt(
+            response.headers['content-range'], offset)) {
       if (await partial.exists()) await partial.delete();
-      throw StateError('Model server returned an invalid Content-Range for resume.');
+      throw StateError(
+          'Model server returned an invalid Content-Range for resume.');
     }
 
     // A server that ignored Range must restart the partial download from zero.
@@ -202,7 +207,8 @@ class MobileModelManager {
         responseLength != null &&
         offset + responseLength > maxAcceptedBytes) {
       if (await partial.exists()) await partial.delete();
-      throw StateError('Model response exceeds the pinned V1 artifact size budget.');
+      throw StateError(
+          'Model response exceeds the pinned V1 artifact size budget.');
     }
 
     final sink = partial.openWrite(
@@ -215,7 +221,8 @@ class MobileModelManager {
           sink.add(chunk);
           written += chunk.length;
           if (maxAcceptedBytes > 0 && written > maxAcceptedBytes) {
-            throw StateError('Model download exceeded the pinned V1 artifact size budget.');
+            throw StateError(
+                'Model download exceeded the pinned V1 artifact size budget.');
           }
           if (manifest.sizeBytes > 0) {
             onProgress?.call((written / manifest.sizeBytes).clamp(0.0, 1.0));
@@ -231,7 +238,8 @@ class MobileModelManager {
     }
 
     if (!await verifyFile(partial)) {
-      final actualHash = await partial.exists() ? await sha256Of(partial) : 'missing';
+      final actualHash =
+          await partial.exists() ? await sha256Of(partial) : 'missing';
       if (await partial.exists()) await partial.delete();
       throw StateError(
         'Downloaded model failed GGUF/integrity verification. '

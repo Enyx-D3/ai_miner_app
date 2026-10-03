@@ -137,13 +137,11 @@ class _MiningProgressScreenState extends State<MiningProgressScreen> {
       );
       await MinerHistoryRepository().save(completed);
 
-      if (preparedJsonPath != null) {
-        final file = File(preparedJsonPath);
-        if (await file.exists()) {
-          try {
-            await file.delete();
-          } catch (_) {}
-        }
+      final preparedFile = File(preparedJsonPath);
+      if (await preparedFile.exists()) {
+        try {
+          await preparedFile.delete();
+        } catch (_) {}
       }
 
       if (!mounted) return;
@@ -287,14 +285,16 @@ class _MiningProgressScreenState extends State<MiningProgressScreen> {
               GlobalContextActionTile(
                 icon: Icons.inventory_2_outlined,
                 title: 'Inventory',
-                subtitle: '${_progress.percent}% of pipeline stages executed\nDemonstration figures · not product benchmarks',
+                subtitle:
+                    '${_progress.percent}% of pipeline stages executed\nDemonstration figures · not product benchmarks',
                 actionLabel: 'View coverage >',
                 onTap: () {},
               ),
               GlobalContextActionTile(
                 icon: Icons.tune_rounded,
                 title: 'Processing',
-                subtitle: 'Structure → Link → Verify\nResumable checkpoints; exact source IDs',
+                subtitle:
+                    'Structure → Link → Verify\nResumable checkpoints; exact source IDs',
                 actionLabel: _running ? 'Running >' : 'Complete >',
                 onTap: () {},
               ),

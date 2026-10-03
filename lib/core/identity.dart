@@ -37,9 +37,10 @@ String canonicalMessageId(
     required String text}) {
   final nativeIdentity =
       normalizeIdentityPart(providerMessageId ?? providerNodeId);
-  if (nativeIdentity.isNotEmpty)
+  if (nativeIdentity.isNotEmpty) {
     return canonicalId(
         'msg', [provider, conversationId, 'native', nativeIdentity]);
+  }
   return canonicalId('msg', [
     provider,
     conversationId,
@@ -51,6 +52,68 @@ String canonicalMessageId(
     normalizeText(text)
   ]);
 }
+
+String canonicalMessageIdLegacyV9Sync(
+    {required String provider,
+    required String conversationId,
+    String? providerMessageId,
+    String? providerNodeId,
+    String? parentProviderNodeId,
+    String? branchId,
+    int? sequence,
+    required String role,
+    required String text}) {
+  final nativeIdentity =
+      normalizeTextLegacyV9(providerMessageId ?? providerNodeId ?? '')
+          .toLowerCase();
+  if (nativeIdentity.isNotEmpty) {
+    return canonicalIdLegacyV9(
+        'msg', [provider, conversationId, 'native', nativeIdentity]);
+  }
+  return canonicalIdLegacyV9('msg', [
+    provider,
+    conversationId,
+    'structural',
+    branchId,
+    parentProviderNodeId,
+    sequence ?? -1,
+    role,
+    normalizeTextLegacyV9(text)
+  ]);
+}
+
+const String identityCompatibilityVersion = 'NFKC_V10_COMPAT_V1';
+
+String requireCompatibleStoredId({
+  required String canonicalIdValue,
+  required String legacyIdValue,
+  required bool canonicalExists,
+  required bool legacyExists,
+  bool semanticallyEquivalent = false,
+  required String label,
+}) {
+  if (canonicalIdValue == legacyIdValue) return canonicalIdValue;
+  if (canonicalExists && legacyExists) {
+    if (!semanticallyEquivalent) {
+      throw StateError('REQUIRE_TICK identity collision: $label');
+    }
+    return canonicalIdValue;
+  }
+  if (canonicalExists) return canonicalIdValue;
+  if (legacyExists) return legacyIdValue;
+  return canonicalIdValue;
+}
+
+Map<String, Object?> identityCompatibilityMetadata(
+        String canonicalIdValue, String legacyIdValue, String storedId) =>
+    {
+      'identityCanonicalId': canonicalIdValue,
+      'identityLegacyIds': canonicalIdValue == legacyIdValue
+          ? <String>[]
+          : <String>[legacyIdValue],
+      'identityStoredId': storedId,
+      'identityCompatibilityVersion': identityCompatibilityVersion,
+    };
 
 Object? _sortJson(Object? value) {
   if (value is List) return value.map(_sortJson).toList();
@@ -76,9 +139,10 @@ String canonicalMessageIdSync(
     required String text}) {
   final nativeIdentity =
       normalizeIdentityPart(providerMessageId ?? providerNodeId ?? '');
-  if (nativeIdentity.isNotEmpty)
+  if (nativeIdentity.isNotEmpty) {
     return canonicalId(
         'msg', [provider, conversationId, 'native', nativeIdentity]);
+  }
   return canonicalId('msg', [
     provider,
     conversationId,

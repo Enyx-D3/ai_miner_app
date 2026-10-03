@@ -66,7 +66,9 @@ class MobilePatternEngine {
     for (final atom in atoms) {
       final kind = '${atom['kind']}';
       if (!const {'decision', 'constraint', 'fact', 'task', 'idea'}
-          .contains(kind)) continue;
+          .contains(kind)) {
+        continue;
+      }
       final key = patternKeyForAtom(atom);
       final group = aggregates.putIfAbsent(
           key, () => _PatternAggregate(key, patternLabelForAtom(atom), kind));
@@ -79,8 +81,9 @@ class MobilePatternEngine {
         if (group.atomIds.length > 300) group.atomIds.removeAt(0);
         if (conflicts.contains(atomId)) {
           group.counterexampleAtomIds.add(atomId);
-          if (group.counterexampleAtomIds.length > 100)
+          if (group.counterexampleAtomIds.length > 100) {
             group.counterexampleAtomIds.removeAt(0);
+          }
         }
       }
     }

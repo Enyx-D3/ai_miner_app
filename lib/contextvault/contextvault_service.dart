@@ -42,8 +42,9 @@ class ContextVaultService {
 
   Map<String, Object?> _dartSummary(Uint8List bytes, String sourceName) {
     final decoded = jsonDecode(utf8.decode(bytes));
-    if (decoded is! List)
+    if (decoded is! List) {
       throw const FormatException('Expected ChatGPT conversations JSON array.');
+    }
     var conversations = 0;
     var messages = 0;
     for (final item in decoded) {

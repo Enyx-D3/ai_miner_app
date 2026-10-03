@@ -65,7 +65,7 @@ class _AutoContextSettingsScreenState extends State<AutoContextSettingsScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: scope,
+              initialValue: scope,
               decoration: const InputDecoration(labelText: 'Default scope'),
               items: const [
                 DropdownMenuItem(

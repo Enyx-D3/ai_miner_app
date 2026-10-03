@@ -50,8 +50,8 @@ class _ContextHandoffScreenState extends State<ContextHandoffScreen> {
       'projects',
       orderBy: 'updated_at DESC',
     );
-    selectedProject = widget.initialProject ??
-        (projects.isNotEmpty ? projects.first : null);
+    selectedProject =
+        widget.initialProject ?? (projects.isNotEmpty ? projects.first : null);
     if (mounted) setState(() {});
   }
 
@@ -97,7 +97,8 @@ class _ContextHandoffScreenState extends State<ContextHandoffScreen> {
     widget.onConsumed?.call();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Approved bounded context copied for $destination')),
+      SnackBar(
+          content: Text('Approved bounded context copied for $destination')),
     );
   }
 
@@ -115,7 +116,8 @@ class _ContextHandoffScreenState extends State<ContextHandoffScreen> {
                 'Build a bounded continuation capsule, inspect exactly what leaves the device, then approve it for one AI destination.',
           ),
           DropdownButtonFormField<String>(
-            value: selectedProject == null ? null : '${selectedProject!['id']}',
+            initialValue:
+                selectedProject == null ? null : '${selectedProject!['id']}',
             decoration: const InputDecoration(labelText: 'Project'),
             items: projects
                 .map(
@@ -146,15 +148,17 @@ class _ContextHandoffScreenState extends State<ContextHandoffScreen> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: destination,
+            initialValue: destination,
             decoration: const InputDecoration(labelText: 'Destination'),
             items: const [
               DropdownMenuItem(value: 'chatgpt', child: Text('ChatGPT')),
               DropdownMenuItem(value: 'claude', child: Text('Claude')),
               DropdownMenuItem(value: 'gemini', child: Text('Gemini')),
-              DropdownMenuItem(value: 'manual', child: Text('Manual / other AI')),
+              DropdownMenuItem(
+                  value: 'manual', child: Text('Manual / other AI')),
             ],
-            onChanged: (value) => setState(() => destination = value ?? 'manual'),
+            onChanged: (value) =>
+                setState(() => destination = value ?? 'manual'),
           ),
           const SizedBox(height: 14),
           FilledButton.icon(
@@ -193,7 +197,8 @@ class _ContextHandoffScreenState extends State<ContextHandoffScreen> {
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: Brain2Theme.heroCardBgOf(context),
-                    border: Border.all(color: Brain2Theme.heroBorderOf(context)),
+                    border:
+                        Border.all(color: Brain2Theme.heroBorderOf(context)),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: SingleChildScrollView(

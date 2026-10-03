@@ -17,16 +17,18 @@ class AtomContextSufficiency {
 Map<String, Object?> buildB250LocalChunk(String text,
     {int anchorStart = 0, int? anchorEnd, int cap = b250TokenCap}) {
   final cleaned = normalizeText(text);
-  if (cleaned.isEmpty)
+  if (cleaned.isEmpty) {
     return {'text': '', 'sourceStart': 0, 'sourceEnd': 0, 'tokenCount': 0};
+  }
   final matches = RegExp(r'\S+').allMatches(cleaned).toList();
-  if (matches.length <= cap)
+  if (matches.length <= cap) {
     return {
       'text': cleaned,
       'sourceStart': 0,
       'sourceEnd': cleaned.length,
       'tokenCount': matches.length
     };
+  }
   final end = anchorEnd ?? anchorStart;
   final anchor =
       ((anchorStart + end) / 2).floor().clamp(0, cleaned.length).toInt();
@@ -59,7 +61,9 @@ double intrinsicAtomSufficiency(String text, String subject,
   if (RegExp(
           r'\b(if|unless|because|therefore|due to|step|first|then|finally)\b',
           caseSensitive: false)
-      .hasMatch(text)) score += 0.04;
+      .hasMatch(text)) {
+    score += 0.04;
+  }
   if (words < 4) score -= 0.2;
   return score.clamp(0, 1).toDouble();
 }
@@ -77,7 +81,9 @@ AtomContextSufficiency assessAtomContextSufficiency(
   for (final item in evidence.take(12)) {
     final text =
         normalizeText('${item['text'] ?? item['content'] ?? ''}').toLowerCase();
-    for (final term in qTerms) if (text.contains(term)) covered.add(term);
+    for (final term in qTerms) {
+      if (text.contains(term)) covered.add(term);
+    }
   }
   final coverage = qTerms.isEmpty ? 1.0 : covered.length / qTerms.length;
   final count = evidence.length;

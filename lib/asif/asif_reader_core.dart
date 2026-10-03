@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../core/contracts.dart';
 import '../core/identity.dart';
+import '../intelligence/shared_query_planner.dart';
 import '../storage/brain2_database.dart';
 
 enum AsifEvidenceBudget { tiny, balanced, deep }
@@ -174,25 +175,15 @@ class AsifReaderCore {
   Future<void> ensureReady() => db.ensureReaderIndex();
 
   AsifReaderQueryPlan planQuery(String query, {int limit = 256}) {
-    final text = normalizeText(query);
-    final temporal = RegExp(
-      r'\b(current|currently|latest|now|changed|change|before|after|timeline|history|supersed|replaced|decision|decided|version|status|what are we using|what did we decide)\b',
-      caseSensitive: false,
-    ).hasMatch(text);
-    final heterogeneous = RegExp(
-      r'\b(compare|comparison|relationship|relate|connect|connection|across|contradiction|conflict|why|cause|depends|dependency|multiple|projects|pattern)\b',
-      caseSensitive: false,
-    ).hasMatch(text);
-    final route = temporal
-        ? 'F_TEMPORAL_TRUTH'
-        : heterogeneous
-            ? 'G_ADAPTIVE_HETEROGENEOUS'
-            : 'B_250_CHUNK';
+    final shared = planSharedQuery(query);
+    final route = shared.route;
     final fallback = route == 'B_250_CHUNK' ? null : 'B_250_CHUNK';
+    final temporal = route == 'F_TEMPORAL_TRUTH';
+    final heterogeneous = route == 'G_ADAPTIVE_HETEROGENEOUS';
     final candidateCap = temporal
         ? 192
         : heterogeneous
-            ? 320
+            ? (shared.mode == SharedQueryMode.deep ? 512 : 320)
             : 256;
     final truthBoost = temporal
         ? 3.2
@@ -205,11 +196,13 @@ class AsifReaderCore {
             ? .9
             : .35;
     final resultCap = limit.clamp(1, 256).toInt();
-    final budget = resultCap <= 32 && candidateCap <= 192
-        ? AsifEvidenceBudget.tiny
-        : resultCap <= 96 && candidateCap <= 320
-            ? AsifEvidenceBudget.balanced
-            : AsifEvidenceBudget.deep;
+    final budget = shared.mode == SharedQueryMode.deep
+        ? AsifEvidenceBudget.deep
+        : resultCap <= 32 && candidateCap <= 192
+            ? AsifEvidenceBudget.tiny
+            : resultCap <= 96 && candidateCap <= 320
+                ? AsifEvidenceBudget.balanced
+                : AsifEvidenceBudget.deep;
     return AsifReaderQueryPlan(
       owner: owner,
       retrievalOwner: retrievalOwner,
@@ -221,11 +214,7 @@ class AsifReaderCore {
       resultCap: resultCap,
       truthBoost: truthBoost,
       diversityBoost: diversityBoost,
-      reason: temporal
-          ? 'temporal/current-truth query'
-          : heterogeneous
-              ? 'multi-unit/relationship query'
-              : 'bounded recall safety route',
+      reason: '${shared.queryClassWire}: ${shared.reasons.join("; ")}',
     );
   }
 
@@ -264,8 +253,9 @@ class AsifReaderCore {
       if (record == null) continue;
       if (projectId != null && projectId.isNotEmpty) {
         final recordProjectId = '${record['projectId'] ?? ''}';
-        if (recordProjectId.isNotEmpty && recordProjectId != projectId)
+        if (recordProjectId.isNotEmpty && recordProjectId != projectId) {
           continue;
+        }
       }
       final expected = '${candidate['record_hash']}';
       final actual = hashEntity(record);
@@ -286,20 +276,27 @@ class AsifReaderCore {
       ].where((x) => x != null).join(' '))
           .toLowerCase();
       if (exact.isNotEmpty && searchable.contains(exact)) score += 5;
-      for (final term in terms) if (searchable.contains(term)) score += 1;
+      for (final term in terms) {
+        if (searchable.contains(term)) {
+          score += 1;
+        }
+      }
       if (table == 'truths') {
         final status = '${record['status']}';
-        if (status == 'CURRENT')
+        if (status == 'CURRENT') {
           score += plan.truthBoost;
-        else if (status == 'CONFLICTING')
+        } else if (status == 'CONFLICTING') {
           score += 1.3;
-        else if (status == 'PENDING_REVIEW') score += .6;
+        } else if (status == 'PENDING_REVIEW') {
+          score += .6;
+        }
         score += (record['confidence'] as num?)?.toDouble() ?? 0;
       }
       if (table == 'atoms') {
         score += (record['confidence'] as num?)?.toDouble() ?? 0;
-        if (const {'decision', 'constraint'}.contains('${record['kind']}'))
+        if (const {'decision', 'constraint'}.contains('${record['kind']}')) {
           score += .8;
+        }
       }
       final diversityKey =
           '${record['projectId'] ?? 'none'}|${record['sourceId'] ?? 'none'}|$table';
@@ -444,8 +441,9 @@ class AsifReaderCore {
         j['createdAt'],
       ];
     }).toList(growable: false);
-    if (sha256Hex(canonicalJson(evidenceRows)) != box.evidenceHash)
+    if (sha256Hex(canonicalJson(evidenceRows)) != box.evidenceHash) {
       return false;
+    }
     final hash = sha256Hex(canonicalJson(<String, Object?>{
       'id': box.id,
       'query': box.query,

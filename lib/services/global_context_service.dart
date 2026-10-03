@@ -5,6 +5,8 @@ import '../core/contracts.dart';
 import '../core/identity.dart';
 import '../core/r1_authority.dart';
 import '../jobs/b2_job_service.dart';
+import '../intelligence/continuity_intelligence.dart';
+import '../intelligence/shared_query_planner.dart';
 import '../storage/brain2_database.dart';
 import '../storage/mutation_service.dart';
 
@@ -22,6 +24,14 @@ class GlobalContextService {
       throw ArgumentError('Project has no canonical id.');
     }
 
+    try {
+      await MobileContinuityIntelligence(db, mutations).recordFriction(
+        projectId,
+        'CONTEXT_REENTRY',
+        detail: {'surface': 'android_resume'},
+      );
+    } catch (_) {}
+
     final truthRows = await db.recordsByJsonFields(
       'truths',
       {'projectId': projectId},
@@ -31,9 +41,8 @@ class GlobalContextService {
     final current = truthRows
         .where((row) => '${row['status']}' == 'CURRENT')
         .toList(growable: true)
-      ..sort((a, b) =>
-          '${b['updatedAt'] ?? b['createdAt'] ?? ''}'
-              .compareTo('${a['updatedAt'] ?? a['createdAt'] ?? ''}'));
+      ..sort((a, b) => '${b['updatedAt'] ?? b['createdAt'] ?? ''}'
+          .compareTo('${a['updatedAt'] ?? a['createdAt'] ?? ''}'));
     final changes = truthRows
         .where((row) => '${row['status']}' != 'CURRENT')
         .take(12)
@@ -48,8 +57,11 @@ class GlobalContextService {
         .where((row) => '${row['status']}' == 'OPEN')
         .toList(growable: false)
       ..sort((a, b) {
-        int score(Map<String, Object?> r) =>
-            '${r['priority']}' == 'HIGH' ? 3 : '${r['priority']}' == 'MEDIUM' ? 2 : 1;
+        int score(Map<String, Object?> r) => '${r['priority']}' == 'HIGH'
+            ? 3
+            : '${r['priority']}' == 'MEDIUM'
+                ? 2
+                : 1;
         final priority = score(b).compareTo(score(a));
         if (priority != 0) return priority;
         return '${b['updatedAt'] ?? b['createdAt'] ?? ''}'
@@ -61,10 +73,24 @@ class GlobalContextService {
       newestFirst: true,
       limit: 100,
     );
-    failureRows.sort((a, b) =>
-        '${b['lastSeenAt'] ?? b['createdAt'] ?? ''}'
-            .compareTo('${a['lastSeenAt'] ?? a['createdAt'] ?? ''}'));
+    failureRows.sort((a, b) => '${b['lastSeenAt'] ?? b['createdAt'] ?? ''}'
+        .compareTo('${a['lastSeenAt'] ?? a['createdAt'] ?? ''}'));
     final failures = failureRows.take(8).toList(growable: false);
+    final continuityRows = await db.recordsByJsonFields(
+      'intelligenceSnapshots',
+      {'projectId': projectId, 'kind': 'CONTINUITY_INTELLIGENCE'},
+      newestFirst: true,
+      limit: 4,
+    );
+    final continuity = continuityRows.isEmpty ? null : continuityRows.first;
+    final continuityGoal = continuity?['goal'] is Map
+        ? (continuity!['goal'] as Map).cast<String, Object?>()
+        : null;
+    final continuityPrescription =
+        ((continuity?['prescription'] as List?) ?? const [])
+            .map((e) => '$e')
+            .where((e) => e.isNotEmpty)
+            .toList(growable: false);
 
     Map<String, Object?>? currentTask;
     for (final row in current) {
@@ -74,31 +100,41 @@ class GlobalContextService {
       }
     }
     final goal = normalizeText(
-      '${currentTask?['text'] ?? project['summary'] ?? project['name'] ?? 'Continue project'}',
+      '${continuityGoal?['text'] ?? currentTask?['text'] ?? project['summary'] ?? project['name'] ?? 'Continue project'}',
     );
 
     final nextAction = ticks.isNotEmpty
         ? <String, Object?>{
             'kind': 'TICK',
-            'text': '${ticks.first['title'] ?? ticks.first['detail'] ?? 'Review human control point'}',
+            'text':
+                '${ticks.first['title'] ?? ticks.first['detail'] ?? 'Review human control point'}',
             'refId': '${ticks.first['id']}',
           }
-        : currentTask != null
+        : continuityPrescription.isNotEmpty
             ? <String, Object?>{
-                'kind': 'TASK',
-                'text': '${currentTask['text']}',
-                'refId': '${currentTask['id']}',
-              }
-            : <String, Object?>{
                 'kind': 'CONTINUE',
-                'text': 'Continue ${project['name'] ?? 'this project'} from the latest verified project state.',
-              };
+                'text': continuityPrescription.first,
+                'refId': '${continuity?['id'] ?? ''}',
+              }
+            : currentTask != null
+                ? <String, Object?>{
+                    'kind': 'TASK',
+                    'text': '${currentTask['text']}',
+                    'refId': '${currentTask['id']}',
+                  }
+                : <String, Object?>{
+                    'kind': 'CONTINUE',
+                    'text':
+                        'Continue ${project['name'] ?? 'this project'} from the latest verified project state.',
+                  };
 
     final evidenceRefs = <String>{};
     for (final row in current) {
       final ids = (row['evidenceAtomIds'] as List?) ?? const [];
       evidenceRefs.addAll(ids.map((e) => '$e').where((e) => e.isNotEmpty));
-      if ('${row['atomId'] ?? ''}'.isNotEmpty) evidenceRefs.add('${row['atomId']}');
+      if ('${row['atomId'] ?? ''}'.isNotEmpty) {
+        evidenceRefs.add('${row['atomId']}');
+      }
     }
     for (final row in ticks) {
       final ids = (row['evidenceAtomIds'] as List?) ?? const [];
@@ -109,6 +145,12 @@ class GlobalContextService {
       evidenceRefs.addAll(ids.map((e) => '$e').where((e) => e.isNotEmpty));
     }
 
+    for (final item
+        in ((continuity?['checklist'] as List?) ?? const []).whereType<Map>()) {
+      final ids = (item['evidenceAtomIds'] as List?) ?? const [];
+      evidenceRefs.addAll(ids.map((e) => '$e').where((e) => e.isNotEmpty));
+    }
+
     Map<String, Object?> minimalTruth(Map<String, Object?> row) => {
           'id': '${row['id']}',
           'kind': '${row['kind']}',
@@ -116,10 +158,10 @@ class GlobalContextService {
           'confidence': row['confidence'] ?? 0,
           'updatedAt': '${row['updatedAt'] ?? row['createdAt'] ?? ''}',
           'evidenceAtomIds': (((row['evidenceAtomIds'] as List?) ?? const [])
-                .map((e) => '$e')
-                .toSet()
-                .toList()
-              ..sort()),
+              .map((e) => '$e')
+              .toSet()
+              .toList()
+            ..sort()),
         };
     Map<String, Object?> minimalTick(Map<String, Object?> row) => {
           'id': '${row['id']}',
@@ -128,10 +170,10 @@ class GlobalContextService {
           'priority': '${row['priority']}',
           if (row['actionType'] != null) 'actionType': '${row['actionType']}',
           'evidenceAtomIds': (((row['evidenceAtomIds'] as List?) ?? const [])
-                .map((e) => '$e')
-                .toSet()
-                .toList()
-              ..sort()),
+              .map((e) => '$e')
+              .toSet()
+              .toList()
+            ..sort()),
         };
     Map<String, Object?> minimalFailure(Map<String, Object?> row) => {
           'id': '${row['id']}',
@@ -140,11 +182,12 @@ class GlobalContextService {
           'cause': '${row['cause']}',
           if (row['repairThatWorked'] != null)
             'repairThatWorked': '${row['repairThatWorked']}',
-          'boundaryConditions': (((row['boundaryConditions'] as List?) ?? const [])
-                .map((e) => '$e')
-                .toSet()
-                .toList()
-              ..sort()),
+          'boundaryConditions':
+              (((row['boundaryConditions'] as List?) ?? const [])
+                  .map((e) => '$e')
+                  .toSet()
+                  .toList()
+                ..sort()),
           'occurrenceCount': row['occurrenceCount'] ?? 0,
         };
 
@@ -165,10 +208,10 @@ class GlobalContextService {
         .toList()
       ..sort((a, b) => '${a['id']}'.compareTo('${b['id']}'));
     final aliases = (((project['aliases'] as List?) ?? const [])
-          .map((e) => '$e')
-          .toSet()
-          .toList()
-        ..sort());
+        .map((e) => '$e')
+        .toSet()
+        .toList()
+      ..sort());
     final evidence = evidenceRefs.toList()..sort();
 
     final stable = <String, Object?>{
@@ -185,6 +228,14 @@ class GlobalContextService {
       'recentChanges': changeMinimal,
       'nextAction': nextAction,
       'evidenceRefs': evidence,
+      if (continuity != null)
+        'continuity': {
+          'goalId': '${continuityGoal?['id'] ?? ''}',
+          'stateHash': '${continuity['stateHash'] ?? ''}',
+          'recap': continuity['recap'],
+          'prescription': continuityPrescription,
+          'avoidedWorkLedger': continuity['avoidedWorkLedger'] ?? const [],
+        },
     };
     return {
       ...stable,
@@ -246,20 +297,20 @@ class GlobalContextService {
       'task': clean,
       'resumeCapsuleHash': '${resume['capsuleHash']}',
       'currentTruthIds': (((resume['currentTruth'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((e) => '${e['id']}')
-            .toList()
-          ..sort()),
+          .whereType<Map>()
+          .map((e) => '${e['id']}')
+          .toList()
+        ..sort()),
       'openTickIds': (((resume['openTicks'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((e) => '${e['id']}')
-            .toList()
-          ..sort()),
+          .whereType<Map>()
+          .map((e) => '${e['id']}')
+          .toList()
+        ..sort()),
       'failureSignatures': (((resume['knownFailures'] as List?) ?? const [])
-            .whereType<Map>()
-            .map((e) => '${e['failureSignature']}')
-            .toList()
-          ..sort()),
+          .whereType<Map>()
+          .map((e) => '${e['failureSignature']}')
+          .toList()
+        ..sort()),
       'compilerSupplementHash': '${supplement['supplementHash']}',
       'policy': policy,
     };
@@ -300,13 +351,18 @@ class GlobalContextService {
 
     for (final row in await db.records('truths', limit: 1200)) {
       if (projectId != null && '${row['projectId']}' != projectId) continue;
-      final score = _overlap(q, _terms('${row['kind']} ${row['text']} ${row['canonicalSubject'] ?? ''}'));
+      final score = _overlap(
+          q,
+          _terms(
+              '${row['kind']} ${row['text']} ${row['canonicalSubject'] ?? ''}'));
       if (score < .18) continue;
       final current = '${row['status']}' == 'CURRENT';
       hits.add({
         'id': '${row['id']}',
         'kind': current ? 'CURRENT_TRUTH' : 'HISTORICAL_TRUTH',
-        'title': current ? 'Existing Current Truth' : 'Existing ${row['status']} work',
+        'title': current
+            ? 'Existing Current Truth'
+            : 'Existing ${row['status']} work',
         'detail': '${row['text']}',
         'score': (score + (current ? .18 : .04)).clamp(0, 1),
         'action': current ? 'REUSE' : 'REVIEW',
@@ -315,10 +371,13 @@ class GlobalContextService {
     for (final row in await db.records('failureMemory', limit: 400)) {
       if (projectId != null &&
           '${row['projectId'] ?? ''}'.isNotEmpty &&
-          '${row['projectId']}' != projectId) continue;
+          '${row['projectId']}' != projectId) {
+        continue;
+      }
       final score = _overlap(
         q,
-        _terms('${row['title']} ${row['cause']} ${row['knownBadOperation'] ?? ''} ${row['boundaryConditions'] ?? ''}'),
+        _terms(
+            '${row['title']} ${row['cause']} ${row['knownBadOperation'] ?? ''} ${row['boundaryConditions'] ?? ''}'),
       );
       if (score < .16) continue;
       hits.add({
@@ -332,18 +391,31 @@ class GlobalContextService {
     }
     hits.sort((a, b) =>
         ((b['score'] as num?) ?? 0).compareTo((a['score'] as num?) ?? 0));
-    return hits.take(limit).toList(growable: false);
+    final result = hits.take(limit).toList(growable: false);
+
+    if (projectId != null && result.isNotEmpty) {
+      try {
+        await MobileContinuityIntelligence(db, mutations).recordFriction(
+          projectId,
+          'REINVENTION_HIT',
+          detail: {
+            'surface': 'android_anti_reinvention',
+            'hitCount': result.length,
+          },
+        );
+      } catch (_) {}
+    }
+
+    return result;
   }
 
   String renderOutbound(Map<String, Object?> package) {
-    final resume =
-        (package['resumeCapsule'] as Map).cast<String, Object?>();
+    final resume = (package['resumeCapsule'] as Map).cast<String, Object?>();
     final truth = ((resume['currentTruth'] as List?) ?? const [])
         .whereType<Map>()
         .take(12);
-    final ticks = ((resume['openTicks'] as List?) ?? const [])
-        .whereType<Map>()
-        .take(8);
+    final ticks =
+        ((resume['openTicks'] as List?) ?? const []).whereType<Map>().take(8);
     final failures = ((resume['knownFailures'] as List?) ?? const [])
         .whereType<Map>()
         .take(6);
@@ -372,7 +444,8 @@ class GlobalContextService {
       if (ticks.isEmpty)
         '- None.'
       else
-        ...ticks.map((e) => '- [${e['priority']}] ${e['title']}: ${e['detail']}'),
+        ...ticks
+            .map((e) => '- [${e['priority']}] ${e['title']}: ${e['detail']}'),
       '',
       'KNOWN FAILED ROUTES / REPAIRS:',
       if (failures.isEmpty)
@@ -395,6 +468,63 @@ class GlobalContextService {
     ].join('\n');
   }
 
+  Future<Map<String, Object?>?> continuityState(
+      Map<String, Object?> project) async {
+    final projectId = '${project['id'] ?? ''}';
+    if (projectId.isEmpty) throw ArgumentError('Project has no canonical id.');
+    final engine = MobileContinuityIntelligence(db, mutations);
+    return engine.refreshProject(projectId);
+  }
+
+  Future<Map<String, Object?>> answerUpgrade({
+    required Map<String, Object?> project,
+    required String previousAnswer,
+    List<String> previousEvidenceIds = const [],
+  }) {
+    final projectId = '${project['id'] ?? ''}';
+    if (projectId.isEmpty) throw ArgumentError('Project has no canonical id.');
+    return MobileContinuityIntelligence(db, mutations)
+        .replayAnswer(projectId, previousAnswer, previousEvidenceIds);
+  }
+
+  SharedQueryPlan queryPlan(
+    String query, {
+    int projectCount = 0,
+    SharedQueryMode? requestedMode,
+  }) =>
+      planSharedQuery(
+        query,
+        projectCount: projectCount,
+        requestedMode: requestedMode,
+      );
+
+  Future<void> recordContinuityFriction({
+    required Map<String, Object?> project,
+    required String type,
+    Map<String, Object?> detail = const {},
+  }) {
+    final projectId = '${project['id'] ?? ''}';
+    if (projectId.isEmpty) throw ArgumentError('Project has no canonical id.');
+    return MobileContinuityIntelligence(db, mutations)
+        .recordFriction(projectId, type, detail: detail);
+  }
+
+  Future<Map<String, Object?>> recordAvoidedWork({
+    required Map<String, Object?> project,
+    required String kind,
+    int count = 1,
+    int? estimatedMs,
+  }) {
+    final projectId = '${project['id'] ?? ''}';
+    if (projectId.isEmpty) throw ArgumentError('Project has no canonical id.');
+    return MobileContinuityIntelligence(db, mutations).recordAvoidedWork(
+      projectId,
+      kind: kind,
+      count: count,
+      estimatedMs: estimatedMs,
+    );
+  }
+
   Future<Map<String, Object?>> recordHandoff({
     required Map<String, Object?> package,
     required String outbound,
@@ -403,7 +533,19 @@ class GlobalContextService {
   }) async {
     final now = DateTime.now().toUtc().toIso8601String();
     final outboundHash = sha256Hex(outbound);
-    final r1Authority = requireR1Allow(issueUserR1Allow(action: 'GLOBAL_CONTEXT_HANDOFF', scope: '${package['projectId']}:$destination:${package['packageHash']}', reason: 'User explicitly approved this exact bounded outbound package.', evidenceRefs: ['${package['packageHash']}', outboundHash]), action: 'GLOBAL_CONTEXT_HANDOFF', scope: '${package['projectId']}:$destination:${package['packageHash']}');
+    final r1Authority = requireR1Allow(
+        issueUserR1Allow(
+            action: 'GLOBAL_CONTEXT_HANDOFF',
+            scope:
+                '${package['projectId']}:$destination:${package['packageHash']}',
+            reason: 'User explicitly approved this exact bounded outbound package.',
+            evidenceRefs: [
+              '${package['packageHash']}',
+              outboundHash
+            ]),
+        action: 'GLOBAL_CONTEXT_HANDOFF',
+        scope:
+            '${package['projectId']}:$destination:${package['packageHash']}');
     final core = <String, Object?>{
       'format': 'GLOBAL_CONTEXT_HANDOFF',
       'version': 1,

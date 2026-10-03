@@ -123,7 +123,9 @@ ProjectFingerprint fingerprintConversation(
   final contentTerms = _keywords('$userText\n$allText', 28);
   final entityTerms = _extractEntities('$title\n$allText');
   final all = <String>{...titleTerms, ...contentTerms};
-  for (final entity in entityTerms) all.addAll(_keywords(entity, 4));
+  for (final entity in entityTerms) {
+    all.addAll(_keywords(entity, 4));
+  }
   return ProjectFingerprint(
       titleTerms: titleTerms,
       contentTerms: contentTerms,
@@ -212,10 +214,11 @@ double scoreProject(
 }
 
 String _deriveProjectName(String title, ProjectFingerprint fingerprint) {
-  if (!fingerprint.genericTitle)
+  if (!fingerprint.genericTitle) {
     return normalizeText(title).isEmpty
         ? 'Untitled project'
         : normalizeText(title);
+  }
   final terms = fingerprint.contentTerms.take(4).toList();
   if (terms.isEmpty) return 'Unresolved conversation';
   return terms

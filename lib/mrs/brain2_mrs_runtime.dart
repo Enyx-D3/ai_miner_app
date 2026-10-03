@@ -90,24 +90,34 @@ class Brain2MrsRuntime {
       trace.add('REQUIRE_TICK');
       final now = DateTime.now().toUtc().toIso8601String();
       final projectId = '${knownFailure['projectId'] ?? ''}';
-      final signature = '${knownFailure['failureSignature'] ?? knownFailure['id'] ?? ''}';
-      final tickId = canonicalId('tick', [projectId, 'failure-memory', signature]);
-      await mutations.upsert('ticks', {
-        'id': tickId,
-        if (projectId.isNotEmpty) 'projectId': projectId,
-        'title': 'Review known failed route',
-        'detail': 'This task overlaps a recorded failure: ${knownFailure['title'] ?? knownFailure['cause'] ?? signature}. Resolve this Tick after confirming conditions changed or choosing a different repair.',
-        'status': 'OPEN',
-        'priority': 'HIGH',
-        'actionType': 'VERIFY',
-        'createdAt': now,
-        'updatedAt': now,
-        'evidenceAtomIds': ((knownFailure['evidenceIds'] as List?) ?? const []).map((e) => '$e').toList(),
-      }, type: 'FAILURE_MEMORY_BRAKE');
+      final signature =
+          '${knownFailure['failureSignature'] ?? knownFailure['id'] ?? ''}';
+      final tickId =
+          canonicalId('tick', [projectId, 'failure-memory', signature]);
+      await mutations.upsert(
+          'ticks',
+          {
+            'id': tickId,
+            if (projectId.isNotEmpty) 'projectId': projectId,
+            'title': 'Review known failed route',
+            'detail':
+                'This task overlaps a recorded failure: ${knownFailure['title'] ?? knownFailure['cause'] ?? signature}. Resolve this Tick after confirming conditions changed or choosing a different repair.',
+            'status': 'OPEN',
+            'priority': 'HIGH',
+            'actionType': 'VERIFY',
+            'createdAt': now,
+            'updatedAt': now,
+            'evidenceAtomIds':
+                ((knownFailure['evidenceIds'] as List?) ?? const [])
+                    .map((e) => '$e')
+                    .toList(),
+          },
+          type: 'FAILURE_MEMORY_BRAKE');
       final out = MrsRunResult(
           runId: runId,
           status: MrsRunStatus.failed,
-          answer: 'Known failed route detected. Global Context created a VERIFY Tick instead of blindly repeating it.',
+          answer:
+              'Known failed route detected. Global Context created a VERIFY Tick instead of blindly repeating it.',
           trace: trace);
       await _persist(out, task, databox);
       return out;
@@ -187,20 +197,23 @@ class Brain2MrsRuntime {
   }
 
   void _verifyDatabox(Map<String, Object?> databox) {
-    if (databox.isEmpty)
+    if (databox.isEmpty) {
       throw StateError('Verified Databox is mandatory for MRS.');
+    }
     final evidence = databox['evidence'];
     final records = databox['records'];
-    if (evidence == null && records == null)
+    if (evidence == null && records == null) {
       throw StateError('Databox contains no verified evidence payload.');
+    }
   }
 
   String? _branchZero(String task, Map<String, Object?> databox) {
     final q = task.trim().toLowerCase();
     final records = _records(databox);
     if (q.isEmpty) return 'No task supplied.';
-    if (q == 'how many sources?' || q == 'source count')
+    if (q == 'how many sources?' || q == 'source count') {
       return '${records.length} verified evidence records are in the Databox.';
+    }
     if ((q.contains('show') || q.contains('list')) && q.contains('evidence')) {
       return records
           .take(12)
@@ -223,7 +236,9 @@ class Brain2MrsRuntime {
       final state =
           '${cap['verificationState'] ?? cap['status'] ?? ''}'.toUpperCase();
       if (!const {'VERIFIED', 'TRANSFER_VERIFIED', 'REPLAY_VERIFIED'}
-          .contains(state)) continue;
+          .contains(state)) {
+        continue;
+      }
       final haystack = normalizeText([
         cap['registryKey'],
         cap['title'],
@@ -247,25 +262,43 @@ class Brain2MrsRuntime {
   }
 
   Future<Map<String, Object?>?> _matchingFailureMemory(String task) async {
-    await db.records('reasoningTrajectories', orderBy: 'updated_at DESC', limit: 24);
-    final failures = await db.records('failureMemory', orderBy: 'updated_at DESC', limit: 64);
-    final taskTerms = normalizeText(task).toLowerCase().split(RegExp(r'[^a-z0-9]+')).where((e) => e.length >= 3).toSet();
+    await db.records('reasoningTrajectories',
+        orderBy: 'updated_at DESC', limit: 24);
+    final failures = await db.records('failureMemory',
+        orderBy: 'updated_at DESC', limit: 64);
+    final taskTerms = normalizeText(task)
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((e) => e.length >= 3)
+        .toSet();
     Map<String, Object?>? best;
     var bestScore = 0.0;
     for (final failure in failures) {
-      final text = normalizeText([failure['title'], failure['cause'], failure['knownBadOperation'], ...((failure['boundaryConditions'] as List?) ?? const [])].join(' ')).toLowerCase();
-      final terms = text.split(RegExp(r'[^a-z0-9]+')).where((e) => e.length >= 3).toSet();
+      final text = normalizeText([
+        failure['title'],
+        failure['cause'],
+        failure['knownBadOperation'],
+        ...((failure['boundaryConditions'] as List?) ?? const [])
+      ].join(' '))
+          .toLowerCase();
+      final terms =
+          text.split(RegExp(r'[^a-z0-9]+')).where((e) => e.length >= 3).toSet();
       if (taskTerms.isEmpty || terms.isEmpty) continue;
-      final score = taskTerms.intersection(terms).length / taskTerms.union(terms).length;
-      if (score > bestScore) { bestScore = score; best = failure; }
+      final score =
+          taskTerms.intersection(terms).length / taskTerms.union(terms).length;
+      if (score > bestScore) {
+        bestScore = score;
+        best = failure;
+      }
     }
     return bestScore >= .20 ? best : null;
   }
 
   String _cognitiveR1(String task, Map<String, Object?> databox) {
     final q = task.toLowerCase();
-    if (q.contains('contradict') || q.contains('conflict'))
+    if (q.contains('contradict') || q.contains('conflict')) {
       return 'CHECK_CONTRADICTION';
+    }
     if (q.contains('compare')) return 'COMPARE';
     if (q.contains('find') || q.contains('retrieve')) return 'RETRIEVE';
     return 'SYNTHESIZE';
@@ -294,8 +327,9 @@ class Brain2MrsRuntime {
           .where(
               (e) => '${e['status'] ?? ''}'.toUpperCase().contains('CONFLICT'))
           .toList();
-      if (conflicts.isNotEmpty)
+      if (conflicts.isNotEmpty) {
         return 'Found ${conflicts.length} explicitly marked conflicting evidence records in the verified Databox.';
+      }
     }
     return null;
   }

@@ -7,6 +7,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../core/contracts.dart';
 import '../core/identity.dart';
+import '../core/current_truth_firewall.dart';
+import '../core/r1_authority.dart';
+import '../intelligence/canonical_truth.dart';
 import '../storage/brain2_database.dart';
 import '../sync/sync_contract.dart';
 
@@ -83,9 +86,11 @@ class B2MMobileService {
 
   Future<void> shareSnapshot() async {
     final file = await exportSnapshot();
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      subject: 'Brain2 AI Miner .B2M',
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        subject: 'Brain2 AI Miner .B2M',
+      ),
     );
   }
 
@@ -102,10 +107,11 @@ class B2MMobileService {
       throw StateError(
           'The selected .B2M snapshot is not available as a local file.');
     }
-    return importSnapshot(File(path));
+    return importSnapshot(File(path), explicitUserAction: true);
   }
 
-  Future<B2MImportResult> importSnapshot(File file) async {
+  Future<B2MImportResult> importSnapshot(File file,
+      {Brain2R1Receipt? r1Authority, bool explicitUserAction = false}) async {
     final decoded = jsonDecode(await file.readAsString());
     if (decoded is! Map) throw const FormatException('Invalid .B2M JSON root.');
     final payload = decoded.cast<String, Object?>();
@@ -136,16 +142,49 @@ class B2MMobileService {
         'B2M memory-root mismatch. Reset local memory before importing a different Brain2 replica.',
       );
     }
-    if (localMessages == 0 && localRoot != snapshotRoot) {
-      await db.setMeta('memory_root', snapshotRoot);
-    }
-
     final nested = payload['tables'];
     final tableMap = nested is Map
         ? nested.cast<String, Object?>()
         : <String, Object?>{
             for (final table in tables) table: payload[table],
           };
+    final rawTruths = tableMap['truths'];
+    final truths = rawTruths is List
+        ? rawTruths
+            .whereType<Map>()
+            .map((item) => item.cast<String, Object?>())
+            .toList(growable: false)
+        : const <Map<String, Object?>>[];
+    final currentTruths = truths
+        .where((truth) => '${truth['status'] ?? ''}' == 'CURRENT')
+        .toList(growable: false);
+    final unsignedForScope = <String, Object?>{...payload}..remove('hash');
+    final stateHash = sha256Hex(canonicalJson(unsignedForScope));
+    final currentTruthRoot = buildCurrentTruthRoot(truths);
+    if (currentTruths.isNotEmpty) {
+      final context = currentTruthB2MImportContext(
+          memoryRoot: snapshotRoot,
+          stateHash: stateHash,
+          currentTruthRoot: currentTruthRoot);
+      var receipt = r1Authority;
+      if (receipt == null && explicitUserAction) {
+        receipt = issueUserR1Allow(
+          action: brain2CurrentTruthR1Action,
+          scope: context.scope,
+          reason:
+              'User explicitly selected a .B2M snapshot for canonical restore.',
+          evidenceRefs: currentTruths.map((truth) => '${truth['id'] ?? ''}'),
+        );
+      }
+      requireCurrentTruthAuthority(
+          truths: currentTruths,
+          receipt: receipt,
+          context: context,
+          authoritySource: 'EXPLICIT_USER_ACTION');
+    }
+    if (localMessages == 0 && localRoot != snapshotRoot) {
+      await db.setMeta('memory_root', snapshotRoot);
+    }
 
     var recordCount = 0;
     var tableCount = 0;

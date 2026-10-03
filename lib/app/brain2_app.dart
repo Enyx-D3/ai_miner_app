@@ -166,7 +166,9 @@ class _Brain2AppState extends State<Brain2App> {
       case 'operations':
         return OperationsScreen(controller);
       case 'handoff':
-        return ContextHandoffScreen(controller, initialTask: controller.pendingSharedText, onConsumed: controller.consumePendingShare);
+        return ContextHandoffScreen(controller,
+            initialTask: controller.pendingSharedText,
+            onConsumed: controller.consumePendingShare);
       case 'attention':
         return const AttentionPreferencesScreen();
       case 'settings':
@@ -205,7 +207,8 @@ class _Brain2AppState extends State<Brain2App> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Brain2Theme.primaryBlue.withOpacity(0.35),
+                              color: Brain2Theme.primaryBlue
+                                  .withValues(alpha: 0.35),
                               blurRadius: 16,
                               offset: const Offset(0, 6),
                             ),
@@ -240,7 +243,8 @@ class _Brain2AppState extends State<Brain2App> {
                         ),
                       const SizedBox(height: 16),
                       Text(
-                        controller.error ?? 'Opening local Global Context memory…',
+                        controller.error ??
+                            'Opening local Global Context memory…',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 15,
@@ -264,241 +268,243 @@ class _Brain2AppState extends State<Brain2App> {
             return GlobalContextOnboardingScreen(controller);
           }
           return Scaffold(
-              key: _scaffoldKey,
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              appBar: PreferredSize(
-                preferredSize: const Size.fromHeight(62),
-                child: SafeArea(
-                  child: GlobalContextBrandHeader(
-                    onSearch: () => setState(() => page = 'search'),
-                    onMore: () => _scaffoldKey.currentState?.openDrawer(),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.search, size: 22),
-                          color: Brain2Theme.textSecondaryOf(context),
-                          splashRadius: 20,
-                          onPressed: () => setState(() => page = 'search'),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.more_horiz, size: 24),
-                          color: Brain2Theme.textSecondaryOf(context),
-                          splashRadius: 20,
-                          onPressed: () =>
-                              _scaffoldKey.currentState?.openDrawer(),
-                        ),
-                      ],
-                    ),
+            key: _scaffoldKey,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            appBar: PreferredSize(
+              preferredSize: const Size.fromHeight(62),
+              child: SafeArea(
+                child: GlobalContextBrandHeader(
+                  onSearch: () => setState(() => page = 'search'),
+                  onMore: () => _scaffoldKey.currentState?.openDrawer(),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.search, size: 22),
+                        color: Brain2Theme.textSecondaryOf(context),
+                        splashRadius: 20,
+                        onPressed: () => setState(() => page = 'search'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.more_horiz, size: 24),
+                        color: Brain2Theme.textSecondaryOf(context),
+                        splashRadius: 20,
+                        onPressed: () =>
+                            _scaffoldKey.currentState?.openDrawer(),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              drawer: Drawer(
-                backgroundColor: Brain2Theme.cardBgOf(context),
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: Brain2Theme.primaryBlue,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'G',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 20,
-                                  ),
+            ),
+            drawer: Drawer(
+              backgroundColor: Brain2Theme.cardBgOf(context),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Brain2Theme.primaryBlue,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'G',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 20,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'GLOBAL CONTEXT',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 15,
-                                    color: Brain2Theme.textPrimaryOf(context),
-                                    letterSpacing: 0.5,
-                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'GLOBAL CONTEXT',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                  color: Brain2Theme.textPrimaryOf(context),
+                                  letterSpacing: 0.5,
                                 ),
-                                Text(
-                                  'Local-first · All Intelligence Views',
-                                  style: TextStyle(
-                                    color: Brain2Theme.textSecondaryOf(context),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Divider(height: 1, color: Brain2Theme.borderOf(context)),
-                      Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          children: [
-                            for (final item in _items) ...[
-                              if (item.$1 == 'dashboard' ||
-                                  item.$1 == 'memory' ||
-                                  item.$1 == 'experiments' ||
-                                  item.$1 == 'devices')
-                                Divider(height: 16, color: Brain2Theme.borderOf(context)),
-                              Container(
-                                margin:
-                                    const EdgeInsets.symmetric(vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: page == item.$1
-                                      ? (Brain2Theme.isDark(context)
-                                          ? const Color(0xFF1E3A8A)
-                                          : Brain2Theme.primaryBlueLight)
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: ListTile(
-                                  dense: true,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  leading: Icon(
-                                    item.$3,
-                                    color: page == item.$1
-                                        ? Brain2Theme.primaryBlueOf(context)
-                                        : Brain2Theme.textSecondaryOf(context),
-                                    size: 20,
-                                  ),
-                                  title: Text(
-                                    item.$2,
-                                    style: TextStyle(
-                                      fontWeight: page == item.$1
-                                          ? FontWeight.w800
-                                          : FontWeight.w600,
-                                      color: page == item.$1
-                                          ? Brain2Theme.primaryBlueOf(context)
-                                          : Brain2Theme.textPrimaryOf(context),
-                                      fontSize: 13.5,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    setState(() => page = item.$1);
-                                    Navigator.of(context).pop();
-                                  },
+                              ),
+                              Text(
+                                'Local-first · All Intelligence Views',
+                                style: TextStyle(
+                                  color: Brain2Theme.textSecondaryOf(context),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Divider(height: 1, color: Brain2Theme.borderOf(context)),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        children: [
+                          for (final item in _items) ...[
+                            if (item.$1 == 'dashboard' ||
+                                item.$1 == 'memory' ||
+                                item.$1 == 'experiments' ||
+                                item.$1 == 'devices')
+                              Divider(
+                                  height: 16,
+                                  color: Brain2Theme.borderOf(context)),
+                            Container(
+                              margin: const EdgeInsets.symmetric(vertical: 2),
+                              decoration: BoxDecoration(
+                                color: page == item.$1
+                                    ? (Brain2Theme.isDark(context)
+                                        ? const Color(0xFF1E3A8A)
+                                        : Brain2Theme.primaryBlueLight)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: ListTile(
+                                dense: true,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                leading: Icon(
+                                  item.$3,
+                                  color: page == item.$1
+                                      ? Brain2Theme.primaryBlueOf(context)
+                                      : Brain2Theme.textSecondaryOf(context),
+                                  size: 20,
+                                ),
+                                title: Text(
+                                  item.$2,
+                                  style: TextStyle(
+                                    fontWeight: page == item.$1
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                    color: page == item.$1
+                                        ? Brain2Theme.primaryBlueOf(context)
+                                        : Brain2Theme.textPrimaryOf(context),
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                                onTap: () {
+                                  setState(() => page = item.$1);
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                            ),
                           ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            body: Column(
+              children: [
+                Expanded(
+                  child: KeyedSubtree(
+                    key: ValueKey(page),
+                    child: _screen(),
+                  ),
+                ),
+                if (page != 'ticks')
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                    child: GlobalContextTickBanner(
+                      count: ticksCount,
+                      onReview: () => setState(() => page = 'ticks'),
+                    ),
+                  ),
+              ],
+            ),
+            bottomNavigationBar: Container(
+              decoration: BoxDecoration(
+                color: Brain2Theme.cardBgOf(context),
+                border: Border(
+                  top: BorderSide(
+                      color: Brain2Theme.borderOf(context), width: 1),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 60,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildNavItem(
+                        context,
+                        index: 0,
+                        label: 'Home',
+                        iconBuilder: (color, selected) => CleanHomeIcon(
+                          color: color,
+                          size: 22,
+                          strokeWidth: selected ? 2.1 : 1.8,
+                        ),
+                      ),
+                      _buildNavItem(
+                        context,
+                        index: 1,
+                        label: 'Search',
+                        iconBuilder: (color, selected) => CleanSearchIcon(
+                          color: color,
+                          size: 22,
+                          strokeWidth: selected ? 2.1 : 1.8,
+                        ),
+                      ),
+                      _buildNavItem(
+                        context,
+                        index: 2,
+                        label: 'Projects',
+                        iconBuilder: (color, selected) => CleanProjectsIcon(
+                          color: color,
+                          size: 22,
+                          strokeWidth: selected ? 2.1 : 1.8,
+                        ),
+                      ),
+                      _buildNavItem(
+                        context,
+                        index: 3,
+                        label: 'Knowledge',
+                        iconBuilder: (color, selected) => Icon(
+                          selected
+                              ? Icons.auto_stories_rounded
+                              : Icons.auto_stories_outlined,
+                          size: 22,
+                          color: color,
+                        ),
+                      ),
+                      _buildNavItem(
+                        context,
+                        index: 4,
+                        label: 'More',
+                        iconBuilder: (color, selected) => Icon(
+                          selected
+                              ? Icons.settings_rounded
+                              : Icons.settings_outlined,
+                          size: 22,
+                          color: color,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              body: Column(
-                children: [
-                  Expanded(
-                    child: KeyedSubtree(
-                      key: ValueKey(page),
-                      child: _screen(),
-                    ),
-                  ),
-                  if (page != 'ticks')
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: GlobalContextTickBanner(
-                        count: ticksCount,
-                        onReview: () => setState(() => page = 'ticks'),
-                      ),
-                    ),
-                ],
-              ),
-              bottomNavigationBar: Container(
-                decoration: BoxDecoration(
-                  color: Brain2Theme.cardBgOf(context),
-                  border: Border(
-                    top: BorderSide(color: Brain2Theme.borderOf(context), width: 1),
-                  ),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    height: 60,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildNavItem(
-                          context,
-                          index: 0,
-                          label: 'Home',
-                          iconBuilder: (color, selected) => CleanHomeIcon(
-                            color: color,
-                            size: 22,
-                            strokeWidth: selected ? 2.1 : 1.8,
-                          ),
-                        ),
-                        _buildNavItem(
-                          context,
-                          index: 1,
-                          label: 'Search',
-                          iconBuilder: (color, selected) => CleanSearchIcon(
-                            color: color,
-                            size: 22,
-                            strokeWidth: selected ? 2.1 : 1.8,
-                          ),
-                        ),
-                        _buildNavItem(
-                          context,
-                          index: 2,
-                          label: 'Projects',
-                          iconBuilder: (color, selected) => CleanProjectsIcon(
-                            color: color,
-                            size: 22,
-                            strokeWidth: selected ? 2.1 : 1.8,
-                          ),
-                        ),
-                        _buildNavItem(
-                          context,
-                          index: 3,
-                          label: 'Knowledge',
-                          iconBuilder: (color, selected) => Icon(
-                            selected
-                                ? Icons.auto_stories_rounded
-                                : Icons.auto_stories_outlined,
-                            size: 22,
-                            color: color,
-                          ),
-                        ),
-                        _buildNavItem(
-                          context,
-                          index: 4,
-                          label: 'More',
-                          iconBuilder: (color, selected) => Icon(
-                            selected
-                                ? Icons.settings_rounded
-                                : Icons.settings_outlined,
-                            size: 22,
-                            color: color,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
+            ),
+          );
         },
       ),
     );

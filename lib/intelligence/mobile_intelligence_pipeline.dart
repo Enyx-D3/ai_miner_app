@@ -4,6 +4,7 @@ import '../storage/brain2_database.dart';
 import '../storage/mutation_service.dart';
 import 'atomization_stack.dart';
 import 'canonical_truth.dart';
+import 'continuity_intelligence.dart';
 import 'intelligence_layer.dart';
 import 'evidence_block_engine.dart';
 import 'truth_engine.dart';
@@ -20,6 +21,8 @@ class MobileIntelligencePipeline {
   late final MobileIntelligenceLayer intelligenceLayer =
       MobileIntelligenceLayer(db);
   late final MobilePatternEngine patterns = MobilePatternEngine(db, mutations);
+  late final MobileContinuityIntelligence continuity =
+      MobileContinuityIntelligence(db, mutations);
 
   void beginBuildSession() => batchTruths.reset();
   void endBuildSession() => batchTruths.reset();
@@ -92,6 +95,12 @@ class MobileIntelligencePipeline {
           primaryTable: 'atoms',
           entityType: 'conversations',
           entityId: '$conversationId:$offset',
+          currentTruthPolicyReason:
+              'Strict deterministic human-authored Current Truth policy passed.',
+          currentTruthEvidenceRefs: truthResult.truthWrites
+              .where((truth) => '${truth['status']}' == 'CURRENT')
+              .map((truth) => '${truth['atomId'] ?? ''}')
+              .where((id) => id.isNotEmpty),
         );
       } catch (_) {
         if (projectId.isNotEmpty) batchTruths.invalidateProject(projectId);
@@ -336,6 +345,7 @@ class MobileIntelligencePipeline {
       entityType: 'projects',
       entityId: projectId,
     );
+    await continuity.refreshProject(projectId);
     await patterns.refresh(limit: 250);
   }
 }

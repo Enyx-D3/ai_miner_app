@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../app/brain2_controller.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'project_detail_screen.dart';
 import 'resume_screen.dart';
 
 class ProjectsScreen extends StatefulWidget {
@@ -49,9 +48,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
           // Hero Card: Pick up where you left off
           GlobalContextHeroCard(
             overline: 'PICK UP WHERE YOU LEFT OFF',
-            title: activeProject != null
-                ? bestTitle(activeProject)
-                : 'Projects',
+            title:
+                activeProject != null ? bestTitle(activeProject) : 'Projects',
             subtitle:
                 '${rows.length} linked projects · recent context available offline',
             buttonText: 'Continue project ↗',
@@ -113,8 +111,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            ResumeProjectScreen(widget.c, record),
+                        builder: (_) => ResumeProjectScreen(widget.c, record),
                       ),
                     ),
                   );

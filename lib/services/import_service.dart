@@ -130,10 +130,24 @@ class Brain2ImportService {
         'src',
         [provider, sourceLabel, 'archive'],
       );
-      final sourceId = canonicalSourceId != legacySourceId &&
-              await db.getRecord('sources', legacySourceId) != null
-          ? legacySourceId
-          : canonicalSourceId;
+      final currentSource = await db.getRecord('sources', canonicalSourceId);
+      final legacySource = legacySourceId == canonicalSourceId
+          ? currentSource
+          : await db.getRecord('sources', legacySourceId);
+      final sourceEquivalent = currentSource != null &&
+          legacySource != null &&
+          '${currentSource['provider'] ?? ''}' ==
+              '${legacySource['provider'] ?? ''}' &&
+          normalizeText('${currentSource['sourceType'] ?? ''}') ==
+              normalizeText('${legacySource['sourceType'] ?? ''}');
+      final sourceId = requireCompatibleStoredId(
+        canonicalIdValue: canonicalSourceId,
+        legacyIdValue: legacySourceId,
+        canonicalExists: currentSource != null,
+        legacyExists: legacySource != null,
+        semanticallyEquivalent: sourceEquivalent,
+        label: 'source:$provider:$sourceLabel',
+      );
       await mutations.upsert(
         'sources',
         {
@@ -149,6 +163,8 @@ class Brain2ImportService {
               : 'CANONICAL_STREAM_ONLY',
           'contextVaultSummary':
               contextVaultSummary ?? const <String, Object?>{},
+          ...identityCompatibilityMetadata(
+              canonicalSourceId, legacySourceId, sourceId),
         },
         type: 'IMPORT_SOURCE',
       );
@@ -181,23 +197,61 @@ class Brain2ImportService {
         'conv',
         [provider, externalId.isEmpty ? title : externalId],
       );
-      final conversationId = canonicalConversationId != legacyConversationId &&
-              await db.getRecord('conversations', legacyConversationId) != null
-          ? legacyConversationId
-          : canonicalConversationId;
-      final messages = _messages(
+      final currentConversation =
+          await db.getRecord('conversations', canonicalConversationId);
+      final legacyConversation = legacyConversationId == canonicalConversationId
+          ? currentConversation
+          : await db.getRecord('conversations', legacyConversationId);
+      final conversationEquivalent = currentConversation != null &&
+          legacyConversation != null &&
+          '${currentConversation['provider'] ?? ''}' ==
+              '${legacyConversation['provider'] ?? ''}' &&
+          normalizeText('${currentConversation['externalId'] ?? ''}') ==
+              normalizeText('${legacyConversation['externalId'] ?? ''}') &&
+          normalizeText('${currentConversation['title'] ?? ''}') ==
+              normalizeText('${legacyConversation['title'] ?? ''}');
+      final conversationId = requireCompatibleStoredId(
+        canonicalIdValue: canonicalConversationId,
+        legacyIdValue: legacyConversationId,
+        canonicalExists: currentConversation != null,
+        legacyExists: legacyConversation != null,
+        semanticallyEquivalent: conversationEquivalent,
+        label: 'conversation:$provider:$externalId',
+      );
+      var messages = _messages(
         conversationRaw,
         conversationId,
         sourceId,
         provider,
       );
       if (messages.isEmpty) continue;
+      messages = await _resolveMessageIdentityCompatibility(messages);
 
-      final resolution = resolveProject(
-        title: title,
-        messages: messages,
-        existingProjects: knownProjects,
-      );
+      final existingConversation = conversationId == canonicalConversationId
+          ? currentConversation
+          : legacyConversation;
+      final existingProjectId = '${existingConversation?['projectId'] ?? ''}';
+      final existingProjectForConversation = existingProjectId.isEmpty
+          ? null
+          : await db.getRecord('projects', existingProjectId);
+      final resolution = existingProjectForConversation != null
+          ? ProjectResolution(
+              projectId: existingProjectId,
+              name: '${existingProjectForConversation['name'] ?? title}',
+              slug: '${existingProjectForConversation['slug'] ?? ''}',
+              aliases: _stringList(existingProjectForConversation['aliases']),
+              entityTerms:
+                  _stringList(existingProjectForConversation['entityTerms']),
+              confidence: ((existingProjectForConversation['resolverConfidence']
+                          as num?)
+                      ?.toDouble() ??
+                  1.0),
+            )
+          : resolveProject(
+              title: title,
+              messages: messages,
+              existingProjects: knownProjects,
+            );
       final conversation = <String, Object?>{
         'id': conversationId,
         'sourceId': sourceId,
@@ -213,6 +267,8 @@ class Brain2ImportService {
           0,
           (sum, message) => sum + ((message['wordCount'] as int?) ?? 0),
         ),
+        ...identityCompatibilityMetadata(
+            canonicalConversationId, legacyConversationId, conversationId),
         'schemaVersion': brain2SchemaVersion,
       };
 
@@ -395,21 +451,31 @@ class Brain2ImportService {
           role: role,
           text: text,
         );
-        out.add(
-          _message(
-            id,
-            conversationId,
-            sourceId,
-            provider,
-            nativeId,
-            role,
-            text,
-            sequence,
-            _date(message['create_time']),
-            entry.key,
-            '${node['parent'] ?? ''}',
-          ),
+        final legacyId = canonicalMessageIdLegacyV9Sync(
+          provider: provider,
+          conversationId: conversationId,
+          providerMessageId: nativeId,
+          providerNodeId: entry.key,
+          parentProviderNodeId: '${node['parent'] ?? ''}',
+          sequence: sequence,
+          role: role,
+          text: text,
         );
+        final record = _message(
+          id,
+          conversationId,
+          sourceId,
+          provider,
+          nativeId,
+          role,
+          text,
+          sequence,
+          _date(message['create_time']),
+          entry.key,
+          '${node['parent'] ?? ''}',
+        );
+        record.addAll(identityCompatibilityMetadata(id, legacyId, id));
+        out.add(record);
         sequence++;
       }
     } else if (conversation['messages'] is List) {
@@ -431,23 +497,74 @@ class Brain2ImportService {
           role: role,
           text: text,
         );
-        out.add(
-          _message(
-            id,
-            conversationId,
-            sourceId,
-            provider,
-            nativeId,
-            role,
-            text,
-            sequence,
-            _date(message['create_time']),
-            null,
-            null,
-          ),
+        final legacyId = canonicalMessageIdLegacyV9Sync(
+          provider: provider,
+          conversationId: conversationId,
+          providerMessageId: nativeId,
+          sequence: sequence,
+          role: role,
+          text: text,
         );
+        final record = _message(
+          id,
+          conversationId,
+          sourceId,
+          provider,
+          nativeId,
+          role,
+          text,
+          sequence,
+          _date(message['create_time']),
+          null,
+          null,
+        );
+        record.addAll(identityCompatibilityMetadata(id, legacyId, id));
+        out.add(record);
         sequence++;
       }
+    }
+    return out;
+  }
+
+  Future<List<Map<String, Object?>>> _resolveMessageIdentityCompatibility(
+      List<Map<String, Object?>> messages) async {
+    final out = <Map<String, Object?>>[];
+    for (final message in messages) {
+      final canonicalMessageId =
+          '${message['identityCanonicalId'] ?? message['id']}';
+      final legacyIds = ((message['identityLegacyIds'] as List?) ?? const [])
+          .map((e) => '$e')
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final legacyMessageId =
+          legacyIds.isEmpty ? canonicalMessageId : legacyIds.first;
+      final current = await db.getRecord('messages', canonicalMessageId);
+      final legacy = legacyMessageId == canonicalMessageId
+          ? current
+          : await db.getRecord('messages', legacyMessageId);
+      final equivalent = current != null &&
+          legacy != null &&
+          '${current['provider'] ?? ''}' == '${legacy['provider'] ?? ''}' &&
+          normalizeText('${current['role'] ?? ''}') ==
+              normalizeText('${legacy['role'] ?? ''}') &&
+          normalizeText('${current['text'] ?? ''}') ==
+              normalizeText('${legacy['text'] ?? ''}');
+      final storedId = requireCompatibleStoredId(
+        canonicalIdValue: canonicalMessageId,
+        legacyIdValue: legacyMessageId,
+        canonicalExists: current != null,
+        legacyExists: legacy != null,
+        semanticallyEquivalent: equivalent,
+        label: 'message:${message['externalId'] ?? canonicalMessageId}',
+      );
+      final existing = storedId == canonicalMessageId ? current : legacy;
+      out.add(<String, Object?>{
+        ...?existing,
+        ...message,
+        'id': storedId,
+        ...identityCompatibilityMetadata(
+            canonicalMessageId, legacyMessageId, storedId)
+      });
     }
     return out;
   }
