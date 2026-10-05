@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -44,11 +45,26 @@ class Brain2MobilePairing {
   });
 
   void _status(Brain2P2PStage stage, String message, {String? peer}) {
+    _log('status stage=${stage.name} peer=${peer ?? '-'} message="$message"');
     onStatus?.call(
       Brain2P2PStatus(stage, message, peerDeviceId: peer),
     );
   }
 
+  void _log(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    // ignore: avoid_print
+    print('[brain2.pairing] $message');
+    developer.log(
+      message,
+      name: 'brain2.pairing',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 
   bool _isLoopbackHost(String host) {
     final value = host.toLowerCase();
@@ -60,6 +76,7 @@ class Brain2MobilePairing {
 
   Brain2PairingInvite parse(String raw) {
     final value = raw.trim();
+    _log('parse start length=${value.length}');
     if (value.startsWith('{')) {
       if (value.contains('"B2_G11_SYNC_PROOF"') ||
           value.contains('"format": "B2_G11_SYNC_PROOF"')) {
@@ -125,7 +142,7 @@ class Brain2MobilePairing {
       );
     }
 
-    return Brain2PairingInvite(
+    final invite = Brain2PairingInvite(
       url: uri,
       joinToken: token,
       inviterDeviceId: peer,
@@ -133,83 +150,106 @@ class Brain2MobilePairing {
       signalingOrigin: signalingOrigin,
       protocolVersion: protocolVersion,
     );
+    _log(
+      'parse success origin=$signalingOrigin peer=$peer protocol=$protocolVersion expires=${expiresAt?.toIso8601String() ?? '-'}',
+    );
+    return invite;
   }
 
   Future<Brain2P2PSync> join(Brain2PairingInvite invite) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('brain2_mobile_device_id', deviceId);
+    try {
+      _log(
+        'join start device=$deviceId origin=${invite.signalingOrigin} peer=${invite.inviterDeviceId}',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('brain2_mobile_device_id', deviceId);
 
-    _status(
-      Brain2P2PStage.signaling,
-      'QR valid. Registering this phone as an authorized replica…',
-      peer: invite.inviterDeviceId,
-    );
-
-    final api = Brain2NetworkClient(invite.signalingOrigin);
-    final joined = await api.register(
-      deviceId: deviceId,
-      name: 'Brain2 AI Miner Mobile',
-      kind: 'mobile',
-      joinToken: invite.joinToken,
-    );
-    final token = '${joined['deviceToken'] ?? ''}';
-    final root = '${joined['spaceId'] ?? ''}';
-    if (token.isEmpty || root.isEmpty) {
-      api.close();
-      throw StateError(
-          'Brain2 signaling server returned an incomplete pairing response.');
-    }
-    final protocol = joined['syncProtocolVersion'] is num
-        ? (joined['syncProtocolVersion'] as num).toInt()
-        : int.tryParse('${joined['syncProtocolVersion']}') ?? 2;
-    if (protocol != 2) {
-      api.close();
-      throw StateError(
-          'Brain2 sync protocol mismatch: server=$protocol, mobile=2.');
-    }
-
-    final localMessages = await db.total('messages');
-    final localRoot = await db.memoryRoot();
-    final differentMemory = localMessages > 0 && localRoot != root;
-    if (localMessages == 0) {
-      await db.setMeta('memory_root', root);
-    } else if (differentMemory) {
       _status(
-        Brain2P2PStage.memoryConflict,
-        'Different Brain2 memories detected. Choose Merge both memories to preserve both replicas.',
+        Brain2P2PStage.signaling,
+        'QR valid. Registering this phone as an authorized replica…',
         peer: invite.inviterDeviceId,
       );
+
+      final api = Brain2NetworkClient(invite.signalingOrigin);
+      _log('register start origin=${invite.signalingOrigin}');
+      final joined = await api.register(
+        deviceId: deviceId,
+        name: 'Brain2 AI Miner Mobile',
+        kind: 'mobile',
+        joinToken: invite.joinToken,
+      );
+      final token = '${joined['deviceToken'] ?? ''}';
+      final root = '${joined['spaceId'] ?? ''}';
+      _log(
+        'register success hasToken=${token.isNotEmpty} root=${root.isEmpty ? '-' : root}',
+      );
+      if (token.isEmpty || root.isEmpty) {
+        api.close();
+        throw StateError(
+            'Brain2 signaling server returned an incomplete pairing response.');
+      }
+      final protocol = joined['syncProtocolVersion'] is num
+          ? (joined['syncProtocolVersion'] as num).toInt()
+          : int.tryParse('${joined['syncProtocolVersion']}') ?? 2;
+      if (protocol != 2) {
+        api.close();
+        throw StateError(
+            'Brain2 sync protocol mismatch: server=$protocol, mobile=2.');
+      }
+
+      final localMessages = await db.total('messages');
+      final localRoot = await db.memoryRoot();
+      final differentMemory = localMessages > 0 && localRoot != root;
+      _log(
+        'memory check localMessages=$localMessages localRoot=$localRoot remoteRoot=$root different=$differentMemory',
+      );
+      if (localMessages == 0) {
+        await db.setMeta('memory_root', root);
+      } else if (differentMemory) {
+        _status(
+          Brain2P2PStage.memoryConflict,
+          'Different Brain2 memories detected. Choose Merge both memories to preserve both replicas.',
+          peer: invite.inviterDeviceId,
+        );
+      }
+
+      final iceServers = _parseIceServers(joined['iceServers']);
+
+      await prefs.setString(_originKey, invite.signalingOrigin);
+      await prefs.setString(_tokenKey, token);
+      await prefs.setString(_deviceKey, deviceId);
+      await prefs.setString(_peerKey, invite.inviterDeviceId);
+      await prefs.setString(_rootKey, await db.memoryRoot());
+      await prefs.setString(_iceKey, jsonEncode(iceServers));
+      _log('credentials persisted iceServers=${iceServers.length}');
+
+      await sync?.dispose();
+      final peerSync = Brain2P2PSync(
+        db: db,
+        api: api,
+        deviceId: deviceId,
+        deviceToken: token,
+        iceServers: iceServers,
+        onStatus: onStatus,
+        onMemoryRootChanged: (newRoot) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_rootKey, newRoot);
+        },
+      );
+      if (differentMemory) {
+        peerSync.rememberMemoryConflict(invite.inviterDeviceId, root);
+      }
+      _log('peer sync start');
+      await peerSync.start();
+      _log('peer sync connect start peer=${invite.inviterDeviceId}');
+      await peerSync.connect(invite.inviterDeviceId);
+      sync = peerSync;
+      _log('join success peer=${invite.inviterDeviceId}');
+      return peerSync;
+    } catch (error, stackTrace) {
+      _log('join failed', error: error, stackTrace: stackTrace);
+      rethrow;
     }
-
-    final iceServers = _parseIceServers(joined['iceServers']);
-
-    await prefs.setString(_originKey, invite.signalingOrigin);
-    await prefs.setString(_tokenKey, token);
-    await prefs.setString(_deviceKey, deviceId);
-    await prefs.setString(_peerKey, invite.inviterDeviceId);
-    await prefs.setString(_rootKey, await db.memoryRoot());
-    await prefs.setString(_iceKey, jsonEncode(iceServers));
-
-    await sync?.dispose();
-    final peerSync = Brain2P2PSync(
-      db: db,
-      api: api,
-      deviceId: deviceId,
-      deviceToken: token,
-      iceServers: iceServers,
-      onStatus: onStatus,
-      onMemoryRootChanged: (newRoot) async {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_rootKey, newRoot);
-      },
-    );
-    if (differentMemory) {
-      peerSync.rememberMemoryConflict(invite.inviterDeviceId, root);
-    }
-    await peerSync.start();
-    await peerSync.connect(invite.inviterDeviceId);
-    sync = peerSync;
-    return peerSync;
   }
 
   Future<Brain2P2PSync?> restore() async {

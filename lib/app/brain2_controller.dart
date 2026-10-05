@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,7 +69,8 @@ class Brain2Controller extends ChangeNotifier {
           .listen((_) => _scheduleRefresh());
 
       final prefs = await SharedPreferences.getInstance();
-      onboardingComplete = prefs.getBool('global_context_onboarding_complete') ?? false;
+      onboardingComplete =
+          prefs.getBool('global_context_onboarding_complete') ?? false;
       final savedTheme = prefs.getString('brain2_theme_mode') ?? 'light';
       themeMode = ThemeMode.values.firstWhere(
         (m) => m.name == savedTheme,
@@ -213,17 +215,25 @@ class Brain2Controller extends ChangeNotifier {
   }
 
   Future<void> joinQr(String raw) async {
+    developer.log(
+      'joinQr start inputLength=${raw.length}',
+      name: 'brain2.pairing',
+    );
     p2pStatus = const Brain2P2PStatus(
       Brain2P2PStage.signaling,
       'QR detected. Validating Brain2 invitation…',
     );
     notifyListeners();
     final invite = pairing.parse(raw);
+    developer.log(
+      'joinQr parsed origin=${invite.signalingOrigin} peer=${invite.inviterDeviceId}',
+      name: 'brain2.pairing',
+    );
     p2p = await pairing.join(invite);
+    developer.log('joinQr joined', name: 'brain2.pairing');
     await refresh();
     notifyListeners();
   }
-
 
   Future<Map<String, Object?>> g11SyncProof() async {
     final truths = await db.allRecords('truths');

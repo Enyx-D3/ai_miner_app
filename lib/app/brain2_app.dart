@@ -366,42 +366,42 @@ class _Brain2AppState extends State<Brain2App> {
                                   color: Brain2Theme.borderOf(context)),
                             Container(
                               margin: const EdgeInsets.symmetric(vertical: 2),
-                              decoration: BoxDecoration(
+                              child: Material(
                                 color: page == item.$1
                                     ? (Brain2Theme.isDark(context)
                                         ? const Color(0xFF1E3A8A)
                                         : Brain2Theme.primaryBlueLight)
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: ListTile(
-                                dense: true,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                leading: Icon(
-                                  item.$3,
-                                  color: page == item.$1
-                                      ? Brain2Theme.primaryBlueOf(context)
-                                      : Brain2Theme.textSecondaryOf(context),
-                                  size: 20,
-                                ),
-                                title: Text(
-                                  item.$2,
-                                  style: TextStyle(
-                                    fontWeight: page == item.$1
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
+                                child: ListTile(
+                                  dense: true,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  leading: Icon(
+                                    item.$3,
                                     color: page == item.$1
                                         ? Brain2Theme.primaryBlueOf(context)
-                                        : Brain2Theme.textPrimaryOf(context),
-                                    fontSize: 13.5,
+                                        : Brain2Theme.textSecondaryOf(context),
+                                    size: 20,
                                   ),
+                                  title: Text(
+                                    item.$2,
+                                    style: TextStyle(
+                                      fontWeight: page == item.$1
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: page == item.$1
+                                          ? Brain2Theme.primaryBlueOf(context)
+                                          : Brain2Theme.textPrimaryOf(context),
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    setState(() => page = item.$1);
+                                    Navigator.of(context).pop();
+                                  },
                                 ),
-                                onTap: () {
-                                  setState(() => page = item.$1);
-                                  Navigator.of(context).pop();
-                                },
                               ),
                             ),
                           ],

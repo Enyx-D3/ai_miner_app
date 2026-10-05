@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,6 +78,10 @@ class _DevicesScreenState extends State<DevicesScreen> {
   Future<void> _accept(String raw) async {
     if (handled || busy) return;
     handled = true;
+    developer.log(
+      'accept pairing input length=${raw.length}',
+      name: 'brain2.pairing',
+    );
     setState(() {
       busy = true;
       scanning = false;
@@ -84,7 +89,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
     });
     try {
       await widget.c.joinQr(raw);
-    } catch (error) {
+      // ignore: avoid_print
+      print('[brain2.pairing] pairing succeeded');
+      developer.log('pairing succeeded', name: 'brain2.pairing');
+    } catch (error, stackTrace) {
+      developer.log(
+        'pairing failed',
+        name: 'brain2.pairing',
+        error: error,
+        stackTrace: stackTrace,
+      );
       handled = false;
       if (mounted) {
         setState(() {
@@ -106,7 +120,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
     final value = data?.text?.trim() ?? '';
     if (value.isEmpty) {
       if (mounted) {
-        setState(() => pairingError = 'Clipboard does not contain a pairing link.');
+        setState(
+            () => pairingError = 'Clipboard does not contain a pairing link.');
       }
       return;
     }
@@ -141,13 +156,16 @@ class _DevicesScreenState extends State<DevicesScreen> {
             GlobalContextActionTile(
               icon: Icons.phone_android_rounded,
               title: 'This device',
-              subtitle: 'Local memory available\nID: ${widget.c.deviceId.length > 20 ? '${widget.c.deviceId.substring(0, 20)}…' : widget.c.deviceId}',
+              subtitle:
+                  'Local memory available\nID: ${widget.c.deviceId.length > 20 ? '${widget.c.deviceId.substring(0, 20)}…' : widget.c.deviceId}',
               actionLabel: 'Details >',
               onTap: () {},
             ),
             GlobalContextActionTile(
               icon: Icons.laptop_mac_rounded,
-              title: status.peerDeviceId != null ? 'MacBook / Peer' : 'Peer device',
+              title: status.peerDeviceId != null
+                  ? 'MacBook / Peer'
+                  : 'Peer device',
               subtitle: paired
                   ? 'Paired · ${_stageTitle(status.stage)}\n${status.message}'
                   : 'Not connected\nScan QR on web to pair and sync',
@@ -197,130 +215,61 @@ class _DevicesScreenState extends State<DevicesScreen> {
                   height: 1.4,
                 ),
               ),
-                if (status.peerDeviceId != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Peer: ${status.peerDeviceId}',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
+              if (status.peerDeviceId != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Peer: ${status.peerDeviceId}',
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: Color(0xff758398),
+                  ),
+                ),
+              ],
+              if (_showsSyncProgress(status.stage)) ...[
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: const LinearProgressIndicator(
+                    minHeight: 7,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.sync,
+                      size: 14,
                       color: Color(0xff758398),
                     ),
-                  ),
-                ],
-                if (_showsSyncProgress(status.stage)) ...[
-                  const SizedBox(height: 14),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: const LinearProgressIndicator(
-                      minHeight: 7,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.sync,
-                        size: 14,
-                        color: Color(0xff758398),
-                      ),
-                      const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(
-                          _syncProgressLabel(status),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xff758398),
-                          ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        _syncProgressLabel(status),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xff758398),
                         ),
                       ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 16),
-                if (hasConflict) ...[
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff171224),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xff8f5cff)),
                     ),
-                    child: const Text(
-                      'Both devices contain Brain2 data. Merge preserves both datasets, deduplicates canonical IDs, and rebuilds root-bound intelligence on the shared pairing root.',
-                      style: TextStyle(color: Color(0xffc7b7ef), height: 1.4),
-                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              if (hasConflict) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff171224),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xff8f5cff)),
                   ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: busy
-                        ? null
-                        : () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            setState(() => busy = true);
-                            try {
-                              await widget.c.reconnectP2P();
-                            } catch (error) {
-                              if (!mounted) return;
-                              messenger.showSnackBar(
-                                SnackBar(content: Text('Reconnect failed: $error')),
-                              );
-                            } finally {
-                              if (mounted) setState(() => busy = false);
-                            }
-                          },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reconnect peer'),
+                  child: const Text(
+                    'Both devices contain Brain2 data. Merge preserves both datasets, deduplicates canonical IDs, and rebuilds root-bound intelligence on the shared pairing root.',
+                    style: TextStyle(color: Color(0xffc7b7ef), height: 1.4),
                   ),
-                  const SizedBox(height: 10),
-                  FilledButton.icon(
-                    onPressed: busy
-                        ? null
-                        : () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            setState(() => busy = true);
-                            try {
-                              await widget.c.mergeBothMemories();
-                            } catch (error) {
-                              if (!mounted) return;
-                              messenger.showSnackBar(
-                                SnackBar(content: Text('Merge failed: $error')),
-                              );
-                            } finally {
-                              if (mounted) setState(() => busy = false);
-                            }
-                          },
-                    icon: const Icon(Icons.merge_type),
-                    label: const Text('Merge both memories'),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-
-                if (status.stage == Brain2P2PStage.disconnected && !hasConflict) ...[
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: busy
-                        ? null
-                        : () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            setState(() => busy = true);
-                            try {
-                              await widget.c.reconnectP2P();
-                            } catch (error) {
-                              if (!mounted) return;
-                              messenger.showSnackBar(
-                                SnackBar(content: Text('Reconnect failed: $error')),
-                              );
-                            } finally {
-                              if (mounted) setState(() => busy = false);
-                            }
-                          },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reconnect peer'),
-                  ),
-                ],
-
+                ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: busy
@@ -329,146 +278,223 @@ class _DevicesScreenState extends State<DevicesScreen> {
                           final messenger = ScaffoldMessenger.of(context);
                           setState(() => busy = true);
                           try {
-                            final proof = await widget.c.g11SyncProof();
-                            final payload =
-                                const JsonEncoder.withIndent('  ').convert(proof);
-                            await Clipboard.setData(ClipboardData(text: payload));
-                            if (!mounted) return;
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'G11 sync proof copied. Compare it with brain2_sync_proof on Web.',
-                                ),
-                              ),
-                            );
+                            await widget.c.reconnectP2P();
                           } catch (error) {
                             if (!mounted) return;
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text('Could not build sync proof: $error'),
-                              ),
+                                  content: Text('Reconnect failed: $error')),
                             );
                           } finally {
                             if (mounted) setState(() => busy = false);
                           }
                         },
-                  icon: const Icon(Icons.verified_outlined),
-                  label: const Text('Copy G11 sync proof'),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reconnect peer'),
                 ),
-                if (pairingError != null) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xff241414),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xff7a3030)),
-                    ),
-                    child: Text(
-                      'Pairing error: $pairingError',
-                      style: const TextStyle(
-                        color: Color(0xffffb8b8),
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-                if (!scanning)
-                  FilledButton.icon(
-                    onPressed: busy
-                        ? null
-                        : () {
-                            handled = false;
-                            setState(() => scanning = true);
-                          },
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: Text(
-                        paired ? 'Scan another Brain2 QR' : 'Scan Brain2 QR'),
-                  )
-                else
-                  SizedBox(
-                    height: 330,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: MobileScanner(
-                        controller: scannerController,
-                        fit: BoxFit.contain,
-                        tapToFocus: true,
-                        errorBuilder: (context, error) => Container(
-                          color: Colors.black,
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.all(18),
-                          child: Text(
-                            'Camera scanner error: ${error.errorCode}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        onDetectError: (error, stackTrace) {
-                          if (!mounted || handled) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Scanner error: $error')),
-                          );
-                        },
-                        onDetect: (capture) {
-                          final value = capture.barcodes
-                              .map((barcode) => barcode.rawValue)
-                              .whereType<String>()
-                              .map((value) => value.trim())
-                              .where((value) => value.isNotEmpty)
-                              .firstOrNull;
-                          if (value != null && value.trim().isNotEmpty) {
-                            _accept(value);
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          setState(() => busy = true);
+                          try {
+                            await widget.c.mergeBothMemories();
+                          } catch (error) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(content: Text('Merge failed: $error')),
+                            );
+                          } finally {
+                            if (mounted) setState(() => busy = false);
                           }
                         },
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: busy ? null : _pastePairingLink,
-                  icon: const Icon(Icons.content_paste),
-                  label: const Text('Paste pairing link'),
+                  icon: const Icon(Icons.merge_type),
+                  label: const Text('Merge both memories'),
                 ),
-                if (scanning)
-                  TextButton(
-                    onPressed: () => setState(() => scanning = false),
-                    child: const Text('Close scanner'),
+                const SizedBox(height: 10),
+              ],
+              if (status.stage == Brain2P2PStage.disconnected &&
+                  !hasConflict) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          setState(() => busy = true);
+                          try {
+                            await widget.c.reconnectP2P();
+                          } catch (error) {
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                  content: Text('Reconnect failed: $error')),
+                            );
+                          } finally {
+                            if (mounted) setState(() => busy = false);
+                          }
+                        },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reconnect peer'),
+                ),
+              ],
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        setState(() => busy = true);
+                        try {
+                          final proof = await widget.c.g11SyncProof();
+                          final payload =
+                              const JsonEncoder.withIndent('  ').convert(proof);
+                          await Clipboard.setData(ClipboardData(text: payload));
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'G11 sync proof copied. Compare it with brain2_sync_proof on Web.',
+                              ),
+                            ),
+                          );
+                        } catch (error) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content:
+                                  Text('Could not build sync proof: $error'),
+                            ),
+                          );
+                        } finally {
+                          if (mounted) setState(() => busy = false);
+                        }
+                      },
+                icon: const Icon(Icons.verified_outlined),
+                label: const Text('Copy G11 sync proof'),
+              ),
+              if (pairingError != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff241414),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xff7a3030)),
                   ),
-                if (paired) ...[
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: busy
-                        ? null
-                        : () async {
-                            setState(() => busy = true);
-                            try {
-                              await widget.c.forgetP2P();
-                              handled = false;
-                            } finally {
-                              if (mounted) setState(() => busy = false);
-                            }
-                          },
-                    icon: const Icon(Icons.link_off),
-                    label: const Text('Forget paired device'),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                const Text(
-                  'There is intentionally no “Generate QR” button on mobile. Pairing authority begins from the existing web Brain2 replica. For local development, the QR must point to a LAN-reachable web/signaling origin rather than localhost.',
-                  style: TextStyle(
-                    color: Color(0xff9aa8b7),
-                    height: 1.4,
-                    fontSize: 12,
+                  child: Text(
+                    'Pairing error: $pairingError',
+                    style: const TextStyle(
+                      color: Color(0xffffb8b8),
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
-            ),
+              if (!scanning)
+                FilledButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () {
+                          handled = false;
+                          setState(() => scanning = true);
+                        },
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: Text(
+                      paired ? 'Scan another Brain2 QR' : 'Scan Brain2 QR'),
+                )
+              else
+                SizedBox(
+                  height: 330,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: MobileScanner(
+                      controller: scannerController,
+                      fit: BoxFit.contain,
+                      tapToFocus: true,
+                      errorBuilder: (context, error) => Container(
+                        color: Colors.black,
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.all(18),
+                        child: Text(
+                          'Camera scanner error: ${error.errorCode}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      onDetectError: (error, stackTrace) {
+                        developer.log(
+                          'scanner detect failed',
+                          name: 'brain2.pairing',
+                          error: error,
+                          stackTrace: stackTrace,
+                        );
+                        if (!mounted || handled) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Scanner error: $error')),
+                        );
+                      },
+                      onDetect: (capture) {
+                        final value = capture.barcodes
+                            .map((barcode) => barcode.rawValue)
+                            .whereType<String>()
+                            .map((value) => value.trim())
+                            .where((value) => value.isNotEmpty)
+                            .firstOrNull;
+                        if (value != null && value.trim().isNotEmpty) {
+                          _accept(value);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: busy ? null : _pastePairingLink,
+                icon: const Icon(Icons.content_paste),
+                label: const Text('Paste pairing link'),
+              ),
+              if (scanning)
+                TextButton(
+                  onPressed: () => setState(() => scanning = false),
+                  child: const Text('Close scanner'),
+                ),
+              if (paired) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          setState(() => busy = true);
+                          try {
+                            await widget.c.forgetP2P();
+                            handled = false;
+                          } finally {
+                            if (mounted) setState(() => busy = false);
+                          }
+                        },
+                  icon: const Icon(Icons.link_off),
+                  label: const Text('Forget paired device'),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Text(
+                'There is intentionally no “Generate QR” button on mobile. Pairing authority begins from the existing web Brain2 replica. For local development, the QR must point to a LAN-reachable web/signaling origin rather than localhost.',
+                style: TextStyle(
+                  color: Color(0xff9aa8b7),
+                  height: 1.4,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
+        ),
         const SizedBox(height: 12),
         const Card(
           child: Padding(
