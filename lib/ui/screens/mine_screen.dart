@@ -122,7 +122,7 @@ class _MineScreenState extends State<MineScreen> {
               title: 'Continue',
               subtitle: projectCount > 0
                   ? 'Your active projects · $messagesCount verified records'
-                  : 'Global Context design\nYour current project · 4 linked threads',
+                  : 'brain2:inContext design\nYour current project · 4 linked threads',
               actionLabel: 'Continue project >',
               onTap: () {
                 Navigator.of(context).push(
@@ -196,9 +196,7 @@ class _MineScreenState extends State<MineScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      _file == null
-                          ? 'Select an archive'
-                          : _file!.name,
+                      _file == null ? 'Select an archive' : _file!.name,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
@@ -251,7 +249,8 @@ class _MineScreenState extends State<MineScreen> {
             GlobalContextActionTile(
               icon: Icons.hub_outlined,
               title: 'Provider',
-              subtitle: 'ChatGPT · Claude · Gemini\nAdd archives or connect a supported source',
+              subtitle:
+                  'ChatGPT · Claude · Gemini\nAdd archives or connect a supported source',
               actionLabel: 'Select >',
               onTap: _pick,
             ),
@@ -279,7 +278,8 @@ class _MineScreenState extends State<MineScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.amber.shade800, size: 20),
+                    Icon(Icons.info_outline,
+                        color: Colors.amber.shade800, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

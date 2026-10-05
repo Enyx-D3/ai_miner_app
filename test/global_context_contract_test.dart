@@ -22,8 +22,16 @@ void main() {
     expect(canonicalId('x', ['ChatGPT', ' Project  Foo ']),
         'x_672c665657ed937a93a9eb87');
     expect(
-      canonicalId('msg',
-          ['chatgpt', 'conv_1', 'structural', null, null, 1, 'user', 'Cafe\u0301']),
+      canonicalId('msg', [
+        'chatgpt',
+        'conv_1',
+        'structural',
+        null,
+        null,
+        1,
+        'user',
+        'Cafe\u0301'
+      ]),
       'msg_fc15f3790e150f38c303abc7',
     );
   });

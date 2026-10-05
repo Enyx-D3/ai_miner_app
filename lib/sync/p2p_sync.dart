@@ -478,7 +478,7 @@ class Brain2P2PSync {
 
     throw StateError(
       'Brain2 P2P channel did not open after reconnect. '
-      'Keep Web AI Miner open on the same network and retry.',
+      'Keep brain2:inContext Web open on the same network and retry.',
     );
   }
 

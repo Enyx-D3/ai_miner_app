@@ -149,7 +149,7 @@ class _MiningProgressScreenState extends State<MiningProgressScreen> {
         _progress = const MinerProgress(
           stage: MinerStage.completed,
           percent: 100,
-          message: 'Brain2 AI Miner completed',
+          message: 'brain2:inContext completed',
         );
         _running = false;
       });

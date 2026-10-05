@@ -89,7 +89,7 @@ class B2MMobileService {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path)],
-        subject: 'Brain2 AI Miner .B2M',
+        subject: 'brain2:inContext .B2M',
       ),
     );
   }

@@ -184,7 +184,7 @@ class _Brain2AppState extends State<Brain2App> {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Global Context',
+      title: 'brain2:inContext',
       theme: Brain2Theme.light(),
       darkTheme: Brain2Theme.dark(),
       themeMode: controller.themeMode,
@@ -216,7 +216,7 @@ class _Brain2AppState extends State<Brain2App> {
                         ),
                         child: const Center(
                           child: Text(
-                            'G',
+                            'b2',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w900,
@@ -244,7 +244,7 @@ class _Brain2AppState extends State<Brain2App> {
                       const SizedBox(height: 16),
                       Text(
                         controller.error ??
-                            'Opening local Global Context memory…',
+                            'Opening local brain2:inContext memory…',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 15,

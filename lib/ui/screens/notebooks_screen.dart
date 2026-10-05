@@ -145,9 +145,8 @@ class _NotebooksScreenState extends State<NotebooksScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected
-              ? Brain2Theme.primaryBlueLight
-              : const Color(0xFFF1F5F9),
+          color:
+              selected ? Brain2Theme.primaryBlueLight : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(

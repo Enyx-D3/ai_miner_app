@@ -115,7 +115,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         decoration: InputDecoration(
                           hintText: widget.discover
                               ? 'Find forgotten work…'
-                              : 'Global Context original plan',
+                              : 'brain2:inContext original plan',
                           hintStyle: TextStyle(
                             color: Brain2Theme.textMuted,
                             fontWeight: FontWeight.w400,
@@ -210,13 +210,15 @@ class _SearchScreenState extends State<SearchScreen> {
                   final item = entry.value;
                   final padIdx = idx.toString().padLeft(2, '0');
                   final title = bestTitle(item.record);
-                  final sourceInfo =
-                      item.record['sourceLabel'] ?? item.record['provider'] ?? 'imported project notes';
+                  final sourceInfo = item.record['sourceLabel'] ??
+                      item.record['provider'] ??
+                      'imported project notes';
 
                   return GlobalContextActionTile(
                     icon: idx % 2 == 1 ? Icons.auto_awesome : Icons.search,
                     title: 'Result $padIdx · $title',
-                    subtitle: 'Source: $sourceInfo\nRelevance score: ${(item.score * 100).toInt()}%',
+                    subtitle:
+                        'Source: $sourceInfo\nRelevance score: ${(item.score * 100).toInt()}%',
                     actionLabel: 'Open evidence >',
                     onTap: () => _showEvidenceSheet(context, item),
                   );
@@ -252,9 +254,8 @@ class _SearchScreenState extends State<SearchScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
-          color: selected
-              ? Brain2Theme.primaryBlue
-              : Brain2Theme.primaryBlueLight,
+          color:
+              selected ? Brain2Theme.primaryBlue : Brain2Theme.primaryBlueLight,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(

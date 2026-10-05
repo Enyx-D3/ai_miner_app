@@ -12,8 +12,11 @@ List<Map<String, Object?>> _maps(Object? value) =>
     (value as List).map(_map).toList();
 
 void main() {
-  test('G11 golden graph root and truth semantics match the frozen cross-surface contract', () {
-    final raw = jsonDecode(File('spec/v1/golden-graph-fixture.json').readAsStringSync());
+  test(
+      'G11 golden graph root and truth semantics match the frozen cross-surface contract',
+      () {
+    final raw = jsonDecode(
+        File('spec/v1/golden-graph-fixture.json').readAsStringSync());
     final fixture = _map(raw);
     expect(fixture['format'], 'B2_V1_GOLDEN_GRAPH_FIXTURE');
     expect(fixture['version'], 1);
@@ -28,7 +31,8 @@ void main() {
     expect(
       graph.nodes.expand((node) => node.evidenceIds),
       isNot(contains('null')),
-      reason: 'Missing evidence references must be omitted, never serialized as the literal string null.',
+      reason:
+          'Missing evidence references must be omitted, never serialized as the literal string null.',
     );
     expect(graph.rootHash, expected['r1RootHash']);
     expect(graph.nodes.length, expected['r1NodeCount']);
@@ -36,24 +40,35 @@ void main() {
 
     final truthIds = truths.map((truth) => '${truth['id']}').toSet();
     final currentTruthIds = graph.nodes
-        .where((node) => node.truthStatus == 'CURRENT' && truthIds.contains(node.sourceRecordId))
+        .where((node) =>
+            node.truthStatus == 'CURRENT' &&
+            truthIds.contains(node.sourceRecordId))
         .map((node) => node.sourceRecordId!)
         .toList()
       ..sort();
-    final expectedCurrent = (assertions['currentTruthSourceIds'] as List).map((e) => '$e').toList()..sort();
+    final expectedCurrent = (assertions['currentTruthSourceIds'] as List)
+        .map((e) => '$e')
+        .toList()
+      ..sort();
     expect(currentTruthIds, expectedCurrent);
 
     final supersededTruthIds = graph.nodes
-        .where((node) => node.truthStatus == 'SUPERSEDED' && truthIds.contains(node.sourceRecordId))
+        .where((node) =>
+            node.truthStatus == 'SUPERSEDED' &&
+            truthIds.contains(node.sourceRecordId))
         .map((node) => node.sourceRecordId!)
         .toList()
       ..sort();
-    final expectedSuperseded = (assertions['supersededTruthSourceIds'] as List).map((e) => '$e').toList()..sort();
+    final expectedSuperseded = (assertions['supersededTruthSourceIds'] as List)
+        .map((e) => '$e')
+        .toList()
+      ..sort();
     expect(supersededTruthIds, expectedSuperseded);
 
     final edgeTypes = graph.edges.map((edge) => edge.type).toSet();
     for (final required in assertions['mustContainEdgeTypes'] as List) {
-      expect(edgeTypes.contains('$required'), isTrue, reason: 'missing edge type $required');
+      expect(edgeTypes.contains('$required'), isTrue,
+          reason: 'missing edge type $required');
     }
 
     final source = graph.nodes.firstWhere(

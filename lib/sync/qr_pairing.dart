@@ -174,7 +174,7 @@ class Brain2MobilePairing {
       _log('register start origin=${invite.signalingOrigin}');
       final joined = await api.register(
         deviceId: deviceId,
-        name: 'Brain2 AI Miner Mobile',
+        name: 'brain2:inContext Mobile',
         kind: 'mobile',
         joinToken: invite.joinToken,
       );

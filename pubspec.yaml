@@ -1,5 +1,5 @@
 name: brain2_ai_miner_mobile
-description: Brain2 AI Miner V9.4 locked-architecture mobile web-parity build with pure-Dart ASIF Reader and native ContextVault boundary.
+description: brain2:inContext mobile web-parity build with pure-Dart ASIF Reader and native ContextVault boundary.
 publish_to: none
 version: 9.6.0+960
 environment:

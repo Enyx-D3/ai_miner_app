@@ -78,7 +78,6 @@ class _TicksScreenState extends State<TicksScreen> {
           description:
               'Explicit human-control points. A Tick blocks only dependent work.',
         ),
-
         GlobalContextSectionCard(
           title: 'Create new Tick',
           badgeLabel: 'Human-in-loop',
@@ -109,9 +108,7 @@ class _TicksScreenState extends State<TicksScreen> {
             ),
           ],
         ),
-
         const SizedBox(height: 18),
-
         GlobalContextSectionCard(
           title: 'Pending actions ($openTicks)',
           children: [
@@ -156,7 +153,9 @@ class _TicksScreenState extends State<TicksScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
-                          isOpen ? Icons.pending_actions : Icons.check_circle_outline,
+                          isOpen
+                              ? Icons.pending_actions
+                              : Icons.check_circle_outline,
                           color: isOpen
                               ? Brain2Theme.primaryBlue
                               : Brain2Theme.greenDark,

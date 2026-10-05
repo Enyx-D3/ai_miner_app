@@ -57,10 +57,13 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: isUser ? Brain2Theme.heroCardBg : Brain2Theme.cardBg,
+                      color:
+                          isUser ? Brain2Theme.heroCardBg : Brain2Theme.cardBg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isUser ? Brain2Theme.heroBorder : Brain2Theme.border,
+                        color: isUser
+                            ? Brain2Theme.heroBorder
+                            : Brain2Theme.border,
                       ),
                     ),
                     padding: const EdgeInsets.all(14),

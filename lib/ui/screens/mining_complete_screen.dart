@@ -35,7 +35,7 @@ class MiningCompleteScreen extends StatelessWidget {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path)],
-        subject: 'Brain2 AI Miner digest.zip',
+        subject: 'brain2:inContext digest.zip',
       ),
     );
   }

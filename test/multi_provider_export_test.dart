@@ -96,12 +96,7 @@ void main() {
       'conversationTitle': 'Copilot Project',
       'messages': [
         {'externalId': 'c1', 'sequence': 0, 'role': 'user', 'text': 'hello'},
-        {
-          'externalId': 'c2',
-          'sequence': 1,
-          'role': 'assistant',
-          'text': 'hi'
-        },
+        {'externalId': 'c2', 'sequence': 1, 'role': 'assistant', 'text': 'hi'},
       ],
     }));
 

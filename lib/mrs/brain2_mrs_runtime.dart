@@ -117,7 +117,7 @@ class Brain2MrsRuntime {
           runId: runId,
           status: MrsRunStatus.failed,
           answer:
-              'Known failed route detected. Global Context created a VERIFY Tick instead of blindly repeating it.',
+              'Known failed route detected. brain2:inContext created a VERIFY Tick instead of blindly repeating it.',
           trace: trace);
       await _persist(out, task, databox);
       return out;

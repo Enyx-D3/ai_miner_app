@@ -100,7 +100,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
                   backgroundColor: Brain2Theme.brandBlue,
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(46),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -123,7 +124,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(46),
                   side: const BorderSide(color: Brain2Theme.border),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   foregroundColor: Brain2Theme.textPrimary,
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -141,7 +143,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(46),
                   side: const BorderSide(color: Brain2Theme.border),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   foregroundColor: Brain2Theme.textPrimary,
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -159,7 +162,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(46),
                   side: const BorderSide(color: Brain2Theme.border),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   foregroundColor: Brain2Theme.textPrimary,
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -179,7 +183,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(46),
                   side: const BorderSide(color: Brain2Theme.border),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   foregroundColor: Brain2Theme.textPrimary,
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -218,10 +223,12 @@ class _MemoryScreenState extends State<MemoryScreen> {
                             ],
                           ),
                         ),
-                icon: const Icon(Icons.delete_outline, size: 18, color: Color(0xffd93025)),
+                icon: const Icon(Icons.delete_outline,
+                    size: 18, color: Color(0xffd93025)),
                 label: const Text(
                   'Reset local memory',
-                  style: TextStyle(color: Color(0xffd93025), fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                      color: Color(0xffd93025), fontWeight: FontWeight.w700),
                 ),
               ),
               if (note.isNotEmpty) ...[

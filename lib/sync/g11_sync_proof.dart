@@ -40,17 +40,21 @@ List<Object?> brain2TruthStateMaterial(List<Map<String, Object?>> truths) {
 String brain2TruthStateRoot(List<Map<String, Object?>> truths) =>
     sha256Hex(jsonEncode(brain2TruthStateMaterial(truths)));
 
-List<List<Object?>> brain2MutationFrontier(List<Map<String, Object?>> mutations) {
+List<List<Object?>> brain2MutationFrontier(
+    List<Map<String, Object?>> mutations) {
   final maxByOrigin = <String, int>{};
   for (final mutation in mutations) {
-    final origin = _proofString(mutation['originDeviceId'] ?? mutation['deviceId']);
+    final origin =
+        _proofString(mutation['originDeviceId'] ?? mutation['deviceId']);
     final raw = mutation['originSequence'] ?? mutation['sequence'];
     final sequence = raw is num ? raw.toInt() : int.tryParse('$raw') ?? 0;
     if (origin.isEmpty || sequence < 1) continue;
     final current = maxByOrigin[origin] ?? 0;
     if (sequence > current) maxByOrigin[origin] = sequence;
   }
-  final rows = maxByOrigin.entries.map<List<Object?>>((entry) => [entry.key, entry.value]).toList()
+  final rows = maxByOrigin.entries
+      .map<List<Object?>>((entry) => [entry.key, entry.value])
+      .toList()
     ..sort((a, b) => '${a[0]}'.compareTo('${b[0]}'));
   return rows;
 }

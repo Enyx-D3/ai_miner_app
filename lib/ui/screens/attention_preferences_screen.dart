@@ -60,7 +60,7 @@ class _AttentionPreferencesScreenState
               tag: 'ANDROID · AN17',
               title: 'Human Taste',
               description:
-                  'Calibrate context depth, resurfacing and interruptions. These controls are explicit, local and editable; Global Context does not infer sensitive traits.',
+                  'Calibrate context depth, resurfacing and interruptions. These controls are explicit, local and editable; brain2:inContext does not infer sensitive traits.',
             ),
             _slider('Context depth', contextDepth,
                 (v) => setState(() => contextDepth = v)),

@@ -42,7 +42,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           GlobalContextSectionCard(
-            title: 'Global Context runtime',
+            title: 'brain2:inContext runtime',
             badgeLabel: 'Verified',
             children: [
               Text(

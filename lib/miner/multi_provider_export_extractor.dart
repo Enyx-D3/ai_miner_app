@@ -194,7 +194,7 @@ class MultiProviderExportExtractor {
       } catch (_) {}
       throw StateError(
         'No supported AI conversations were found in this export ZIP. '
-        'Brain2 AI Miner currently recognizes ChatGPT, Claude, Gemini, '
+        'brain2:inContext currently recognizes ChatGPT, Claude, Gemini, '
         'B2 SourceEnvelope, and generic role/content JSON conversations.',
       );
     }

@@ -92,7 +92,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       child: Text(
                         t.toUpperCase(),
                         style: TextStyle(
-                          color: selected ? Colors.white : Brain2Theme.primaryBlue,
+                          color:
+                              selected ? Colors.white : Brain2Theme.primaryBlue,
                           fontWeight: FontWeight.w700,
                           fontSize: 12,
                         ),

@@ -16,7 +16,8 @@ void main() {
         awaitingRemoteAnswer: false,
       ),
       isFalse,
-      reason: 'duplicate/stale answer must be ignored once negotiation is stable',
+      reason:
+          'duplicate/stale answer must be ignored once negotiation is stable',
     );
     expect(
       brain2ShouldApplyRemoteAnswer(

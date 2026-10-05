@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'theme.dart';
 
-/// Top branded bar with Global Context logo, title, and actions
+/// Top branded bar with brain2:inContext logo, title, and actions
 class GlobalContextBrandHeader extends StatelessWidget {
   final VoidCallback? onSearch;
   final VoidCallback? onMore;

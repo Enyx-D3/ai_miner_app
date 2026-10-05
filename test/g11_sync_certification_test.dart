@@ -11,7 +11,9 @@ List<Map<String, Object?>> _maps(Object? value) =>
     (value as List).map(_map).toList();
 
 void main() {
-  test('G11.1 rejects initial mutation gaps but accepts duplicates and contiguous deltas', () {
+  test(
+      'G11.1 rejects initial mutation gaps but accepts duplicates and contiguous deltas',
+      () {
     expect(brain2MutationGapExpected(0, 1), isNull);
     expect(brain2MutationGapExpected(0, 3), 1);
     expect(brain2MutationGapExpected(2, 2), isNull);
@@ -28,7 +30,8 @@ void main() {
     final mutations = _maps(fixture['mutations']);
 
     expect(brain2TruthStateRoot(truths), expected['truthStateRoot']);
-    expect(brain2MutationFrontierRoot(mutations), expected['mutationFrontierRoot']);
+    expect(brain2MutationFrontierRoot(mutations),
+        expected['mutationFrontierRoot']);
     expect(brain2MutationFrontier(mutations), expected['frontier']);
   });
 }
